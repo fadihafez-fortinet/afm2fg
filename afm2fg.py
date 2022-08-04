@@ -1009,7 +1009,7 @@ if __name__ == "__main__":
 
     try:
         f = io.open(fname, mode='r', buffering=-1, encoding=None, errors=None, newline=None, closefd=True)
-        #print(readModuleValues(f))
+
         readModuleValues(f)
 
         createFGAddresseObjects()
@@ -1021,17 +1021,15 @@ if __name__ == "__main__":
 
         createFGPolicies()
 
-        # validateAllPolicies()
+        # validate that all referenced Addresses or Services in the Policies actually exist and the FortiGate configuration will not return errors when pasted into a FortiGate
+        validateAllPolicies()
 
-        # for a in addresses:
-        #     print(a.name)
+        if fnamew:
+            fwrite = io.open(fnamew, mode='w', buffering=-1, encoding=None, errors=None, newline=None, closefd=True)
+            fwrite.write(json.dumps(modules))
+            fwrite.close()
 
-        # fwrite = io.open(fnamew, mode='w', buffering=-1, encoding=None, errors=None, newline=None, closefd=True)
-        # fwrite.write(json.dumps(modules))
-
-        # print(json.dumps(modules))
         f.close()
-        # fwrite.close()
 
     except OSError:
         print (OSError.errno)
