@@ -91,54 +91,7 @@ class Port:
         self.comment = comment
 
 
-class Rule:
-        # EXAMPLE:
-        # Internal-TSF_Whirlpool_E2E_Tenant_EU-Protected-SSH {
-        #     action accept-decisively
-        #     description "Internal-TSF Whirlpool E2E Tenant EU-Protected-SSH | TSF-API | GAv2"
-        #     ip-protocol tcp
-        #     log yes
-        #     rule-number 1
-        #     destination {
-        #         address-lists {
-        #             Internal-TSF_Whirlpool_E2E_Tenant_EU-Protected
-        #         }
-        #         port-lists {
-        #             Internal-TSF_Whirlpool_E2E_Tenant_EU-SSH
-        #         }
-        #     }
-        #     source {
-        #         address-lists {
-        #             DMZ-Autobahn_DMZ
-        #             Office-Enterprise_VPN
-        #         }
-        #     }
-        # OR
-        # cloud_permit_tcp_ports {
-        #     action accept-decisively
-        #     description "This rule allows for TCP clustering/sync communications between BIG-IP nodes in the cluster"
-        #     ip-protocol tcp
-        #     rule-number 1
-        #     destination {
-        #         addresses {
-        #             10.255.255.1/32 { }
-        #             10.255.255.2/32 { }
-        #             192.168.0.1/32 { }
-        #             192.168.0.2/32 { }
-        #         }
-        #         port-lists {
-        #             _sys_self_allow_tcp_defaults
-        #         }
-        #     }
-        #     source {
-        #         addresses {
-        #             10.255.255.1/32 { }
-        #             10.255.255.2/32 { }
-        #             192.168.0.1/32 { }
-        #             192.168.0.2/32 { }
-        #         }
-        #     }
-        # }        
+class Rule:   
 
     name = ""
     action = "" # action = accept | accept-decisively | drop | reject
@@ -565,28 +518,6 @@ def removeCommonPrepend(name):
 
 # enddef removeCommonPrepend
 
-# net address-list DMZ-EU_AWS_PM-Public {
-#     addresses {
-#         184.120.0.96/27 {
-#             description DMZ-EU_AWS_PM-Public
-#         }
-#         184.120.34.96/27 {
-#             description DMZ-EU_AWS_PM-Public
-#         }
-#         184.120.45.80/28 {
-#             description DMZ-EU_AWS_PM-Public
-#         }
-#     }
-#     description "DMZ-EU_AWS_PM-Public | TSF-API | GAv2"
-# }
-# net port-list DMZ-Merlin_Internal_Kafka-Kafka_Service {
-#     description "DMZ-Merlin_Internal_Kafka-Kafka_Service | TSF-API | GAv2"
-#     ports {
-#         9092 { }
-#         9093 { }
-#         9094 { }
-#     }
-# }
 def processNet(section):
     # print(section)
     modules['net']['afm_config'].append(section)
@@ -764,14 +695,6 @@ def shortenServiceName(name):
 
 def createFGServiceObjects():
 
-    # conf firewall service
-    #   edit "KERBEROS"
-    #        set category "Authentication"
-    #        set tcp-portrange 88 464
-    #        set udp-portrange 88 464
-    #   next
-    # end
-
     for k, port_list in modules['net']['port_lists'].items():
         name = port_list['name']
         comment = ''
@@ -859,12 +782,6 @@ def printFGServiceObjects():
 
 def createFGAddress(name, addr):
 
-    # edit "FMR-1"
-    #     set uuid 4c4bb2c2-a91f-51ec-ef6d-f23b916aba97
-    #     set associated-interface "wan2"
-    #     set subnet 104.197.35.194 255.255.255.255
-    # next
-
     if type(addr) is dict:
         a = list(addr.keys())[0]
     else:
@@ -886,22 +803,6 @@ def createFGAddress(name, addr):
         addresses[a] = Address(a, 6, 'range', a)
     elif addr.count(':') >= 2:
         addresses[a] = Address(a, 6, 'subnet', a)
-
-
-    # if addr.split('-')[0]
-
-    # range vs ip subnet
-    # if '-' in a:
-    #     if '.' in a:
-    #         addresses[a] = Address(a, 4, 'range', a)
-    #     elif ':' in a:
-    #         addresses[a] = Address(a, 6, 'range', a)
-    # else:
-    #     if '.' in a:
-    #         addresses[a] = Address(a, 4, 'subnet', a)
-    #     elif ':' in a:
-    #         addresses[a] = Address(a, 6, 'subnet', a)
-
 
     return ""
 
