@@ -25,7 +25,7 @@ import re
 module_names = ["net","security","pem","auth","sys","ltm","cm","cli"]
 modules = {}
 
-attempt_num = 5
+attempt_num = 7
 
 protocol_numbers = {
     'ospf': 84,
@@ -999,6 +999,7 @@ if __name__ == "__main__":
         exit(100)
 
     fname = sys.argv[1]
+    fnamew = ""
 
     if (len(sys.argv) == 3):
         fnamew = sys.argv[2]
