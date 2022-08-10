@@ -25,7 +25,7 @@ import re
 module_names = ["net","security","pem","auth","sys","ltm","cm","cli"]
 modules = {}
 
-attempt_num = 7
+attempt_num = 12
 
 protocol_numbers = {
     'ospf': 84,
@@ -877,6 +877,9 @@ def createFGPolicy():
 
                     if "addresses" in destination:
                         curr_rule_dests["addresses"].extend(destination["addresses"])
+                        for a in destination["addresses"]:
+                            createFGAddress('',a)
+                        
                     
                     if "port-lists" in destination:                        
                         for dst_port_list_name in destination["port-lists"]:
