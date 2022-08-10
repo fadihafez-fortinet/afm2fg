@@ -213,16 +213,19 @@ class Policy:
     def printDstPorts(self, dst_ports_list):
 
         if len(dst_ports_list) == 0:
-            print("        set service ALL_TCP")
-            print("        set service ALL_UDP")
+            print("        set service ALL_TCP ALL_UDP")
             return
+
+        print("        set service ", end="")
 
         for s in dst_ports_list:
             if len(s) > 78:
                 shortname, c = shortenServiceName(s)
-                print("        set service " + shortname)
+                print(shortname + " ", end="")
             else:
-                print("        set service " + s)
+                print(s + " ", end="")
+
+        print("")
 
     def printService(self, protocol):
         if protocol == "tcp":
