@@ -347,6 +347,10 @@ global_rule_number = 0
 
 def shortenRuleName(rule_name):
     new_name = ""
+
+    if len(rule_name) < 40:
+        return rule_name
+
     orig_name = rule_name.strip("_").strip("-").split("_")
     for i in orig_name:
         if len(i) == 0:
@@ -720,6 +724,22 @@ def createFGServiceObjects():
 
         ports.append(Port(name, port_numbers, comment))
 
+    for k, port_list in modules['security']['port_lists'].items():
+        name = port_list['name']
+        comment = ''
+        port_numbers = []
+
+        if len(name) > 78:
+            shortname, comment = shortenServiceName(name)
+            name = shortname
+
+        for p in port_list['ports']:
+            port_numbers.append(p)
+
+        ports.append(Port(name, port_numbers, comment))
+
+
+
 # enddef createFGServiceObjects
 
 def printFGAddressObjects():
@@ -930,6 +950,8 @@ def createFGPolicy():
 
                         if "addresses" in source:
                             curr_rule_srcs["addresses"].extend(source["addresses"])
+                            for a in source["addresses"]:
+                                createFGAddress('',a)
                         
                         # NOTE: never seen port lists in source but let's leave this in anyways                    
                         if "port-lists" in source:
@@ -1049,7 +1071,7 @@ if __name__ == "__main__":
         createFGPolicies()
 
         # validate that all referenced Addresses or Services in the Policies actually exist and the FortiGate configuration will not return errors when pasted into a FortiGate
-        # validateAllPolicies()
+        validateAllPolicies()
 
         if fnamew:
             fwrite = io.open(fnamew, mode='w', buffering=-1, encoding=None, errors=None, newline=None, closefd=True)
