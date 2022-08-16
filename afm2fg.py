@@ -558,9 +558,17 @@ def processSecurity(section):
     elif (type == "address-list"):
         addresses = parseList(section)
         if "addresses" in addresses[0]['security']:
-            modules['security']['address_lists'].append({'name': name, 'type': 'addresses', 'addresses': addresses[0]['security']['addresses'] })
+            modules['security']['address_lists'][name] = {'name': name, 'type': 'addresses', 'addresses': addresses[0]['security']['addresses'] }
         elif "address-lists" in addresses[0]['security']:
-            modules['security']['address_lists'].append({'name': name, 'type': 'address-lists', 'addresses': addresses[0]['security']['address-lists'] })
+            modules['security']['address_lists'][name] = {'name': name, 'type': 'address-lists', 'addresses': addresses[0]['security']['address-lists'] }
+
+    elif type == "port-list":
+        ports = parseList(section)
+        if "port-lists" in ports[0]['security']:
+            modules['security']['port_lists'][name] = {'name': name, 'type': 'port-lists', 'ports': ports[0]['security']['port-lists']}
+
+        if "ports" in ports[0]['security']:
+            modules['security']['port_lists'][name] = {'name': name, 'type': 'ports', 'ports': ports[0]['security']['ports']}
 
     elif (type == "policy"):
         modules['security']['policy_lists'].append(parseLists(section, 'rules', name))
@@ -674,12 +682,12 @@ def createFGAddresseObjects():
             for a in address_list['addresses']:
                 createFGAddress(address_list_name, removeCommonPrepend(a))
 
-    for address_list in modules['security']['address_lists']:
+    for address_list_name, address_list in modules['security']['address_lists'].items():
 
-        name = address_list['name']
+        # name = address_list['name']
         if address_list['type'] == "addresses":
             for a in address_list['addresses']:
-                createFGAddress(name, a)
+                createFGAddress(address_list_name, removeCommonPrepend(a))
 
 # enddef createFGAddresseObjects
 
@@ -813,7 +821,10 @@ def createFGAddress(name, addr):
 
 def extractAddressesFromAddressList(address_list_name):
 
-    address_list = modules['net']['address_lists'][address_list_name]
+    if address_list_name in modules['net']['address_lists']:
+        address_list = modules['net']['address_lists'][address_list_name]
+    elif address_list_name in modules['security']['address_lists']:
+        address_list = modules['security']['address_lists'][address_list_name]
 
     if address_list["type"] == "addresses":
         # if the addresses are dicts then just get the keys.  The values are irrelevant
@@ -833,7 +844,12 @@ def extractAddressesFromAddressList(address_list_name):
 
 def extractPortsFromPortsList(port_list_name):
 
-    port_list = modules['net']['port_lists'][port_list_name]
+    port_list = {'ports': []}
+
+    if port_list_name in modules['net']['port_lists']:
+        port_list = modules['net']['port_lists'][port_list_name]
+    else:
+        port_list = modules['security']['port_lists'][port_list_name]
 
     return port_list["ports"]
 
@@ -854,87 +870,91 @@ def createFGPolicy():
 
         # print(rule_list["name"])
         curr_rule_list = []
-        for rlist in rule_list["rules"]:
-            for r in rlist:
-                # print(r)
-                # print(rlist[r])
-                curr_rule = rlist[r]
+        if 'rules' in rule_list:
+            for rlist in rule_list["rules"]:
+                for r in rlist:
+                    # print(r)
+                    # print(rlist[r])
+                    curr_rule = rlist[r]
 
-                curr_rule_dests = {
-                    'addresses': [],
-                    'ports': [],
-                    'raw-ports': []
-                }
+                    curr_rule_dests = {
+                        'addresses': [],
+                        'ports': [],
+                        'raw-ports': []
+                    }
 
-                ip_protocol = ""
-                if "ip-protocol" in curr_rule:
-                    ip_protocol = curr_rule['ip-protocol']
+                    ip_protocol = ""
+                    if "ip-protocol" in curr_rule:
+                        ip_protocol = curr_rule['ip-protocol']
 
-                if "destination" in curr_rule:
-                    destination = curr_rule['destination']
-                    
-                    if "address-lists" in destination:
-                        for dst_address_list_name in destination['address-lists']:
-                            al = extractAddressesFromAddressList(removeCommonPrepend(dst_address_list_name))
-                            curr_rule_dests["addresses"].extend(al)
-
-                    if "addresses" in destination:
-                        curr_rule_dests["addresses"].extend(destination["addresses"])
-                        for a in destination["addresses"]:
-                            createFGAddress('',a)
+                    if "destination" in curr_rule:
+                        destination = curr_rule['destination']
                         
-                    
-                    if "port-lists" in destination:                        
-                        for dst_port_list_name in destination["port-lists"]:
-                            curr_rule_dests["ports"].append(removeCommonPrepend(dst_port_list_name))
+                        if "address-lists" in destination:
+                            for dst_address_list_name in destination['address-lists']:
+                                al = extractAddressesFromAddressList(removeCommonPrepend(dst_address_list_name))
+                                curr_rule_dests["addresses"].extend(al)
+
+                        if "addresses" in destination:
+                            curr_rule_dests["addresses"].extend(destination["addresses"])
+                            for a in destination["addresses"]:
+                                createFGAddress('',a)
                             
-                            # we know the L4 protocol so lets apply it to global port var now
-                            applyL4ProtocolToPort(removeCommonPrepend(dst_port_list_name), ip_protocol)
+                        
+                        if "port-lists" in destination:                        
+                            for dst_port_list_name in destination["port-lists"]:
+                                curr_rule_dests["ports"].append(removeCommonPrepend(dst_port_list_name))
+                                
+                                # we know the L4 protocol so lets apply it to global port var now
+                                applyL4ProtocolToPort(removeCommonPrepend(dst_port_list_name), ip_protocol)
 
-                            # pl = extractPortsFromPortsList(dst_port_list_name)
-                            # curr_rule_dests["ports"].extend(pl)                
+                                # pl = extractPortsFromPortsList(dst_port_list_name)
+                                # curr_rule_dests["ports"].extend(pl)                
 
-                    if "ports" in destination:
-                        curr_rule_dests["raw-ports"].extend(destination["ports"])
+                        if "ports" in destination:
+                            curr_rule_dests["raw-ports"].extend(destination["ports"])
 
-                curr_rule_srcs = {
-                    'addresses': [],
-                    'ports': [],
-                    'raw-ports': []
-                }
+                    curr_rule_srcs = {
+                        'addresses': [],
+                        'ports': [],
+                        'raw-ports': []
+                    }
 
-                if "source" in curr_rule:
-                    source = curr_rule['source']
+                    if "source" in curr_rule:
+                        source = curr_rule['source']
 
-                    if "address-lists" in source:
-                        for src_address_list_name in source['address-lists']:
-                            al = extractAddressesFromAddressList(removeCommonPrepend(src_address_list_name))
-                            curr_rule_srcs["addresses"].extend(al)
+                        if "address-lists" in source:
+                            for src_address_list_name in source['address-lists']:
+                                al = extractAddressesFromAddressList(removeCommonPrepend(src_address_list_name))
+                                curr_rule_srcs["addresses"].extend(al)
 
-                    if "addresses" in source:
-                        curr_rule_srcs["addresses"].extend(source["addresses"])
-                    
-                    # NOTE: never seen port lists in source but let's leave this in anyways                    
-                    if "port-lists" in source:
-                        for src_port_list_name in source["port-lists"]:
-                            pl = extractPortsFromPortsList(removeCommonPrepend(src_port_list_name))
-                            curr_rule_srcs["ports"].extend(pl)
+                        if "addresses" in source:
+                            curr_rule_srcs["addresses"].extend(source["addresses"])
+                        
+                        # NOTE: never seen port lists in source but let's leave this in anyways                    
+                        if "port-lists" in source:
+                            for src_port_list_name in source["port-lists"]:
+                                pl = extractPortsFromPortsList(removeCommonPrepend(src_port_list_name))
+                                curr_rule_srcs["ports"].extend(pl)
 
-                    if "ports" in source:
-                        curr_rule_srcs["raw-ports"].extend(source["ports"])
-                    
-                if "rule-number" in curr_rule:
-                    global_rule_number = curr_rule['rule-number']
-                else:
-                    global_rule_number += 10
+                        if "ports" in source:
+                            curr_rule_srcs["raw-ports"].extend(source["ports"])
+                        
+                    if "rule-number" in curr_rule:
+                        global_rule_number = curr_rule['rule-number']
+                    else:
+                        global_rule_number += 10
 
-                curr_rule_obj = Rule(r, curr_rule['action'], '', curr_rule['ip-protocol'], 1, global_rule_number, curr_rule_srcs, curr_rule_dests)
-                # rules.append(curr_rule_obj)
-                curr_rule_list.append(curr_rule_obj)
+                    if 'ip-protocol' not in curr_rule:
+                        curr_rule['ip-protocol'] = 'tcp'
 
-            rules_list[rule_list['name']] = curr_rule_list
+                    curr_rule_obj = Rule(r, curr_rule['action'], '', curr_rule['ip-protocol'], 1, global_rule_number, curr_rule_srcs, curr_rule_dests)
+                    # rules.append(curr_rule_obj)
+                    curr_rule_list.append(curr_rule_obj)
+
+                rules_list[rule_list['name']] = curr_rule_list
                 
-        print("")
+            print("")
 
     for policy in modules['security']['policy_lists']:
         policy_name = policy["name"]
@@ -986,8 +1006,8 @@ def init():
         }
     
     modules['security']['rule_lists'] = []
-    modules['security']['port_lists'] = []
-    modules['security']['address_lists'] = []
+    modules['security']['port_lists'] = {}
+    modules['security']['address_lists'] = {}
     modules['security']['policy_lists'] = []
     modules['security']['shared_objects_lists'] = []
 
@@ -1029,7 +1049,7 @@ if __name__ == "__main__":
         createFGPolicies()
 
         # validate that all referenced Addresses or Services in the Policies actually exist and the FortiGate configuration will not return errors when pasted into a FortiGate
-        validateAllPolicies()
+        # validateAllPolicies()
 
         if fnamew:
             fwrite = io.open(fnamew, mode='w', buffering=-1, encoding=None, errors=None, newline=None, closefd=True)
