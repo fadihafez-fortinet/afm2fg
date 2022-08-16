@@ -111,21 +111,6 @@ class Rule:
     def printFGFormattedAddress():
         pass
 
-    def getDestination(self):
-        addresses = []
-        ports = []
-        for a in self.destination["addresses"]:
-            addresses.append(a)
-
-        for p in self.destination["ports"]:
-            ports.append(p)
-
-        return "addresses: " + ", ".join(addresses) + "\n" + "ports: " + ", ".join(ports)
-        
-    def getSource(self):
-        return ""
-        # return "addresses: " + self.source["addresses"] + "\n" + "ports: " + self.source["ports"]
-
     def __init__(self, name, action, description, protocol, log, rule_number, source, destination) -> None:
         self.name = name or ""
         self.action = action or "accept-decisively"
