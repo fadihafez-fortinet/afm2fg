@@ -82,13 +82,17 @@ class Port:
     def getPort(self):
         return self.ports
 
+    def setProtocol(self, protocol):
+        self.protocol = protocol
+
     def __init__(self) -> None:
         pass
 
-    def __init__(self, name, value, comment):
+    def __init__(self, name, value, comment, protocol=''):
         self.name = name
         self.ports = value
         self.comment = comment
+        self.protocol = protocol
 
 
 class Rule:   
@@ -122,8 +126,6 @@ class Rule:
         self.destination = destination or {}
         self.description = description or ""
         
-    pass
-
 class Policy:
     name = ""
     rule_list = []
@@ -204,11 +206,11 @@ class Policy:
         print("        set service ", end="")
 
         for s in dst_ports_list:
-            if len(s) > 78:
-                shortname, c = shortenServiceName(s)
+            if len(s.name) > 78:
+                shortname, s.comment = shortenServiceName(s.name)
                 print(shortname + " ", end="")
             else:
-                print(s + " ", end="")
+                print(s.name + " ", end="")
 
         print("")
 
@@ -217,6 +219,8 @@ class Policy:
             print("        set service ALL_TCP")
         elif protocol == "udp":
             print("        set service ALL_UDP")
+        elif protocol == "icmp":
+            print("        set service ALL_ICMP")
 
     def printAction(self, action):
         if action == "accept-decisively":
@@ -285,28 +289,14 @@ class Policy:
 
                 # validate the destination service exists in the global ports list
                 for p in r.destination["ports"]:
-                    if len(p) > 78:
-                        continue
-                    port_found = False
-                    for gp in ports:
-                        if gp.name == p:
-                            port_found = True
-                            break
-                    if not port_found:
-                        print("validation error, policy name:  " + r.name + " destination service not found: " + p)
+                    if p.name not in ports:
+                        print("validation error, policy name:  " + r.name + " destination service not found: " + p.name)
                         errorcount += 1                        
 
                 # validate the destination service exists in the global ports list
                 for p in r.source["ports"]:
-                    if len(p) > 78:
-                        continue
-                    port_found = False
-                    for gp in ports:
-                        if gp.name == p:
-                            port_found = True
-                            break
-                    if not port_found:                        
-                        print("validation error, policy name: " + r.name + " source service not found: " + p)
+                    if p.name not in ports:
+                        print("validation error, policy name: " + r.name + " source service not found: " + p.name)
                         errorcount += 1                        
 
         print(str(errorcount) + " errors found in policy")
@@ -322,7 +312,7 @@ class Policy:
 
 
 addresses = {}
-ports = [Port]
+ports = {}
 # rules = [Rule]
 rules_list = {}
 policies = []
@@ -707,7 +697,7 @@ def createFGServiceObjects():
         for p in port_list['ports']:
             port_numbers.append(p)
 
-        ports.append(Port(name, port_numbers, comment))
+        ports[name] = Port(name, port_numbers, comment)
 
     for k, port_list in modules['security']['port_lists'].items():
         name = port_list['name']
@@ -721,8 +711,7 @@ def createFGServiceObjects():
         for p in port_list['ports']:
             port_numbers.append(p)
 
-        ports.append(Port(name, port_numbers, comment))
-
+        ports[name] = Port(name, port_numbers, comment)
 
 
 # enddef createFGServiceObjects
@@ -770,25 +759,32 @@ def printFGServiceObjects():
     print("conf firewall service custom")
 
     for p in ports:
-        print("    edit " + p.name)
 
-        if p.comment != '':
-            print("        set comment " + p.comment)
+        this_port = ports[p]
+        print("    edit " + this_port.name)
 
-        lower_pname = p.name.lower()
-        if p.protocol == "tcp":
+        if ports[p].comment != '':
+            print("        set comment " + this_port.comment)
+
+        if this_port.protocol == "":
+            this_port.protocol = "tcp"
+
+        if this_port.protocol == "tcp":
         # if "tcp-" in lower_pname or "tcp_" in lower_pname:
             print("        set tcp-portrange ", end='')
-            print(*p.ports)
-        elif p.protocol == "udp":
+            print(*this_port.ports)
+        elif this_port.protocol == "udp":
         # elif "udp-" in lower_pname or "udp_" in lower_pname:
             print("        set udp-portrange ", end='')
-            print(*p.ports)
+            print(*this_port.ports)
+        elif this_port.protocol == "icmp":
+            print("        set protcol ICMP ", end='')
+            print("        unset icmptype ", end='')
         else:
             print("        set tcp-portrange ", end='')
-            print(*p.ports)
+            print(*this_port.ports)
             print("        set udp-portrange ", end='')
-            print(*p.ports)
+            print(*this_port.ports)
             
         print("    next")
 
@@ -861,11 +857,24 @@ def extractPortsFromPortsList(port_list_name):
 # enddef extractPortsFromPortsList
 
 def applyL4ProtocolToPort(dst_port_list_name, ip_protocol):
-    for p in ports:
-        if p.name == dst_port_list_name:
-            p.protocol = ip_protocol
+    if dst_port_list_name in ports:
+        ports[dst_port_list_name].setProtocol(ip_protocol)
 
 # enddef applyL4ProtocolToPort
+
+def createFGPort(port, protocol):
+    for p in ports:
+        cp = ports[p]
+        if len(ports[p].ports) > 1:
+            continue
+
+        if port == ports[p].ports[0] and ports[p].protocol != "":
+                return ports[p]
+        
+    ports[port] = Port(port, port, '', protocol)
+    return ports[port]
+
+# enddef createFGPort
 
 def createFGPolicy():
 
@@ -908,15 +917,19 @@ def createFGPolicy():
                         
                         if "port-lists" in destination:                        
                             for dst_port_list_name in destination["port-lists"]:
-                                curr_rule_dests["ports"].append(removeCommonPrepend(dst_port_list_name))
+                                curr_rule_dests["ports"].append(ports[removeCommonPrepend(dst_port_list_name)])
                                 
                                 # we know the L4 protocol so lets apply it to global port var now
                                 applyL4ProtocolToPort(removeCommonPrepend(dst_port_list_name), ip_protocol)
 
                                 # pl = extractPortsFromPortsList(dst_port_list_name)
-                                # curr_rule_dests["ports"].extend(pl)                
+                                # curr_rule_dests["ports"].extend(pl)
 
                         if "ports" in destination:
+                            for dst_port in destination["ports"]:
+                                dp = createFGPort(dst_port, ip_protocol)
+                                curr_rule_dests["ports"].append(dp)                                
+                            
                             curr_rule_dests["raw-ports"].extend(destination["ports"])
 
                     curr_rule_srcs = {
@@ -941,8 +954,8 @@ def createFGPolicy():
                         # NOTE: never seen port lists in source but let's leave this in anyways                    
                         if "port-lists" in source:
                             for src_port_list_name in source["port-lists"]:
-                                pl = extractPortsFromPortsList(removeCommonPrepend(src_port_list_name))
-                                curr_rule_srcs["ports"].extend(pl)
+                                pl = ports[removeCommonPrepend(src_port_list_name)]
+                                curr_rule_srcs["ports"].append(pl)
 
                         if "ports" in source:
                             curr_rule_srcs["raw-ports"].extend(source["ports"])
