@@ -408,65 +408,6 @@ def dictify(arr):
     
     return obj
 
-# def dictify(arr):
-
-#     final_arr = []
-#     linenum = 0
-#     addresses_arr_str = ""
-#     ports_arr_str = ""
-#     address_lists_arr_str = ""
-#     port_lists_arr_str = ""
-#     all_arrays = []
-
-#     address_or_port_arr = []
-#     in_list = False
-#     in_description = False
-
-#     for i in arr:
-#         if "addresses {" in i:
-#             all_arrays.append("\"addresses\": ")
-#             addresses_arr_str = ",".join(readValues(arr[linenum:]))
-#             all_arrays.append("[ " + addresses_arr_str + " ]")
-#         elif "address-lists {" in i:
-#             all_arrays.append("\"address-lists\": ")
-#             address_lists_arr_str = ",".join(readValues(arr[linenum:]))
-#             all_arrays.append("[ " + address_lists_arr_str + " ]")            
-#         elif "ports {" in i:
-#             all_arrays.append("\"ports\": ")
-#             ports_arr_str = ",".join(readValues(arr[linenum:]))
-#             all_arrays.append("[ " + ports_arr_str + " ]")            
-#         elif "port-lists {" in i:
-#             all_arrays.append("\"port-lists\": ")
-#             port_lists_arr_str = ",".join(readValues(arr[linenum:]))
-#             all_arrays.append("[ " + port_lists_arr_str + " ]")            
-#         # elif i.endswith('{ }'):
-#         #     addresses_arr.append("\"" + i.split()[0] + "\"")
-#         #     # address_or_port_arr.append("\"" + i.split()[0] + "\"")
-#         elif "{" in i:
-#         #     if in_list:
-#         #         address_or_port_arr.append("\"" + i.split()[0] + "\"")
-#         #         in_description = True
-#         #     else:
-#             final_arr.append("\"" + i.split()[0] + "\"" + ": { ")
-#         elif "}" in i:
-#             if in_list:
-#                 if not in_description:
-#                     s = ",".join(address_or_port_arr)
-#                     final_arr.append("[ " + s + " ]")
-#                     in_list = False
-#                 else:
-#                     in_description = False
-#             else:
-#                 final_arr.append("}")
-
-#         linenum += 1
-
-#     json_str = "{" + " ".join(final_arr) + "}"
-
-#     return json.loads(json_str)
-
-# # enddef dictify
-
 def parseList(items):
 
     item_list = []
