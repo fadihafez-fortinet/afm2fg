@@ -12,6 +12,7 @@
 from asyncio.constants import DEBUG_STACK_DEPTH
 from errno import errorcode
 import fcntl, os, sys, io, json
+from stringprep import in_table_a1
 from lib2to3.pygram import python_grammar_no_print_statement
 from multiprocessing.sharedctypes import Value
 from ssl import PROTOCOL_TLS_SERVER
@@ -345,7 +346,28 @@ def shortenRuleName(rule_name):
 def parseRule(rule):
     pass
 
+def readValues(arr):
+
+    bracecount = 0
+    values_arr = []
+    for i in arr:
+        if i.strip().endswith("{ }"):
+            values_arr.append("\"" + i.split()[0] + "\" ")
+        elif i.strip().startswith("{"):
+            values_arr.append("\"" + i.split()[0] + "\" ")
+            bracecount += 1
+        elif i.strip().startswith("}"):
+            bracecount -= 1
+
+        if bracecount == -1:
+            break
+
+    return values_arr
+
+# enddef readValues
+
 # take an array of configuration and return a dictionary
+
 def dictify(arr):
 
     obj = {}
@@ -364,7 +386,14 @@ def dictify(arr):
 
         elif l.endswith('}'):
             if len(val_arr) > 0:
-                return val_arr, i+1
+                if 'addresses' not in obj and 'address-lists' not in obj and 'ports' not in obj and 'port-lists' not in obj:
+                    val_arr.extend(list(obj.keys()))
+                    return val_arr, i+1
+                else:
+                    for v in val_arr:
+                        obj[v] = 'True'
+
+                    return obj, i+1
             else:
                 return obj, i+1
 
@@ -379,6 +408,64 @@ def dictify(arr):
     
     return obj
 
+# def dictify(arr):
+
+#     final_arr = []
+#     linenum = 0
+#     addresses_arr_str = ""
+#     ports_arr_str = ""
+#     address_lists_arr_str = ""
+#     port_lists_arr_str = ""
+#     all_arrays = []
+
+#     address_or_port_arr = []
+#     in_list = False
+#     in_description = False
+
+#     for i in arr:
+#         if "addresses {" in i:
+#             all_arrays.append("\"addresses\": ")
+#             addresses_arr_str = ",".join(readValues(arr[linenum:]))
+#             all_arrays.append("[ " + addresses_arr_str + " ]")
+#         elif "address-lists {" in i:
+#             all_arrays.append("\"address-lists\": ")
+#             address_lists_arr_str = ",".join(readValues(arr[linenum:]))
+#             all_arrays.append("[ " + address_lists_arr_str + " ]")            
+#         elif "ports {" in i:
+#             all_arrays.append("\"ports\": ")
+#             ports_arr_str = ",".join(readValues(arr[linenum:]))
+#             all_arrays.append("[ " + ports_arr_str + " ]")            
+#         elif "port-lists {" in i:
+#             all_arrays.append("\"port-lists\": ")
+#             port_lists_arr_str = ",".join(readValues(arr[linenum:]))
+#             all_arrays.append("[ " + port_lists_arr_str + " ]")            
+#         # elif i.endswith('{ }'):
+#         #     addresses_arr.append("\"" + i.split()[0] + "\"")
+#         #     # address_or_port_arr.append("\"" + i.split()[0] + "\"")
+#         elif "{" in i:
+#         #     if in_list:
+#         #         address_or_port_arr.append("\"" + i.split()[0] + "\"")
+#         #         in_description = True
+#         #     else:
+#             final_arr.append("\"" + i.split()[0] + "\"" + ": { ")
+#         elif "}" in i:
+#             if in_list:
+#                 if not in_description:
+#                     s = ",".join(address_or_port_arr)
+#                     final_arr.append("[ " + s + " ]")
+#                     in_list = False
+#                 else:
+#                     in_description = False
+#             else:
+#                 final_arr.append("}")
+
+#         linenum += 1
+
+#     json_str = "{" + " ".join(final_arr) + "}"
+
+#     return json.loads(json_str)
+
+# # enddef dictify
 
 def parseList(items):
 
@@ -529,28 +616,46 @@ def processSecurity(section):
     # print(section)
     modules['security']['afm_config'].append(section)
     
+    policy_type = section[0].split()[1]
     type = section[0].split()[2]
     name = removeCommonPrepend(section[0].split()[3])
-    if (type == "rule-list"):
-        modules['security']['rule_lists'].append(parseLists(section, 'rules', name))
 
-    elif (type == "address-list"):
-        addresses = parseList(section)
-        if "addresses" in addresses[0]['security']:
-            modules['security']['address_lists'][name] = {'name': name, 'type': 'addresses', 'addresses': addresses[0]['security']['addresses'] }
-        elif "address-lists" in addresses[0]['security']:
-            modules['security']['address_lists'][name] = {'name': name, 'type': 'address-lists', 'addresses': addresses[0]['security']['address-lists'] }
+    if policy_type == "firewall":
+        if (type == "rule-list"):
+            modules['security']['firewall']['rule_lists'].append(parseLists(section, 'rules', name))
 
-    elif type == "port-list":
-        ports = parseList(section)
-        if "port-lists" in ports[0]['security']:
-            modules['security']['port_lists'][name] = {'name': name, 'type': 'port-lists', 'ports': ports[0]['security']['port-lists']}
+        elif (type == "address-list"):
+            addresses = parseList(section)
+            if "addresses" in addresses[0]['security']:
+                modules['security']['firewall']['addresses'][name] = {'name': name, 'type': 'addresses', 'addresses': addresses[0]['security']['addresses'] }
+            if "address-lists" in addresses[0]['security']:
+                modules['security']['firewall']['address_lists'][name] = {'name': name, 'type': 'address-lists', 'addresses': addresses[0]['security']['address-lists'] }
 
-        if "ports" in ports[0]['security']:
-            modules['security']['port_lists'][name] = {'name': name, 'type': 'ports', 'ports': ports[0]['security']['ports']}
+        elif type == "port-list":
+            ports = parseList(section)
+            if "port-lists" in ports[0]['security']:
+                modules['security']['firewall']['port_lists'][name] = {'name': name, 'type': 'port-lists', 'ports': ports[0]['security']['port-lists']}
+            if "ports" in ports[0]['security']:
+                modules['security']['firewall']['ports'][name] = {'name': name, 'type': 'ports', 'ports': ports[0]['security']['ports']}
 
-    elif (type == "policy"):
-        modules['security']['policy_lists'].append(parseLists(section, 'rules', name))
+        elif (type == "policy"):
+            modules['security']['firewall']['policy_lists'].append(parseLists(section, 'rules', name))
+
+    elif policy_type == "nat":
+
+        if type == "destination-translation":
+            addresses = parseList(section)
+            modules['security']['nat']['destination-translation'][name] = {'name': name, 'type': addresses[0]['security']['type'], 'addresses': addresses[0]['security']['addresses']}
+
+        elif type == "source-translation":
+            addresses = parseList(section)
+            modules['security']['nat']['source-translation'][name] = {'name': name, 'type': addresses[0]['security']['type'], 'addresses': addresses[0]['security']['addresses']}
+
+        elif type == "policy":
+            modules['security']['nat']['policy_lists'].append(parseLists(section, 'rules', name))
+
+        pass
+        # TODO: implement elements for NAT objects
 
     return 0
 
@@ -644,7 +749,7 @@ def createFGAddressGroups():
     for address_list in modules['net']['address_lists']:
         pass
 
-    for address_list in modules['security']['address_lists']:
+    for address_list in modules['security']['firewall']['address_lists']:
         pass
 
 # enddef createFGAddressGroups
@@ -661,12 +766,20 @@ def createFGAddresseObjects():
             for a in address_list['addresses']:
                 createFGAddress(address_list_name, removeCommonPrepend(a))
 
-    for address_list_name, address_list in modules['security']['address_lists'].items():
+    for address_list_name, address_list in modules['security']['firewall']['address_lists'].items():
 
         # name = address_list['name']
         if address_list['type'] == "addresses":
             for a in address_list['addresses']:
                 createFGAddress(address_list_name, removeCommonPrepend(a))
+
+    for address_list_name, address_list in modules['security']['firewall']['addresses'].items():
+
+        # name = address_list['name']
+        if address_list['type'] == "addresses":
+            for a in address_list['addresses']:
+                createFGAddress(address_list_name, removeCommonPrepend(a))
+
 
 # enddef createFGAddresseObjects
 
@@ -699,7 +812,21 @@ def createFGServiceObjects():
 
         ports[name] = Port(name, port_numbers, comment)
 
-    for k, port_list in modules['security']['port_lists'].items():
+    for k, port_list in modules['security']['firewall']['port_lists'].items():
+        name = port_list['name']
+        comment = ''
+        port_numbers = []
+
+        if len(name) > 78:
+            shortname, comment = shortenServiceName(name)
+            name = shortname
+
+        for p in port_list['ports']:
+            port_numbers.append(p)
+
+        ports[name] = Port(name, port_numbers, comment)
+
+    for k, port_list in modules['security']['firewall']['ports'].items():
         name = port_list['name']
         comment = ''
         port_numbers = []
@@ -824,8 +951,10 @@ def extractAddressesFromAddressList(address_list_name):
 
     if address_list_name in modules['net']['address_lists']:
         address_list = modules['net']['address_lists'][address_list_name]
-    elif address_list_name in modules['security']['address_lists']:
-        address_list = modules['security']['address_lists'][address_list_name]
+    elif address_list_name in modules['security']['firewall']['address_lists']:
+        address_list = modules['security']['firewall']['address_lists'][address_list_name]
+    elif address_list_name in modules['security']['firewall']['addresses']:
+        address_list = modules['security']['firewall']['addresses'][address_list_name]
 
     if address_list["type"] == "addresses":
         # if the addresses are dicts then just get the keys.  The values are irrelevant
@@ -850,7 +979,7 @@ def extractPortsFromPortsList(port_list_name):
     if port_list_name in modules['net']['port_lists']:
         port_list = modules['net']['port_lists'][port_list_name]
     else:
-        port_list = modules['security']['port_lists'][port_list_name]
+        port_list = modules['security']['firewall']['port_lists'][port_list_name]
 
     return port_list["ports"]
 
@@ -880,7 +1009,7 @@ def createFGPolicy():
 
     global global_rule_number
 
-    for rule_list in modules['security']['rule_lists']:
+    for rule_list in modules['security']['firewall']['rule_lists']:
 
         # print(rule_list["name"])
         curr_rule_list = []
@@ -976,7 +1105,7 @@ def createFGPolicy():
                 
             print("")
 
-    for policy in modules['security']['policy_lists']:
+    for policy in modules['security']['firewall']['policy_lists']:
         policy_name = policy["name"]
         rules_for_this_policy = []
         rule_nums_for_this_policy = []
@@ -1025,11 +1154,21 @@ def init():
             "afm_config": []
         }
     
-    modules['security']['rule_lists'] = []
-    modules['security']['port_lists'] = {}
-    modules['security']['address_lists'] = {}
-    modules['security']['policy_lists'] = []
+    
     modules['security']['shared_objects_lists'] = []
+
+    modules['security']['firewall'] = {}
+    modules['security']['firewall']['rule_lists'] = []
+    modules['security']['firewall']['port_lists'] = {}
+    modules['security']['firewall']['address_lists'] = {}
+    modules['security']['firewall']['ports'] = {}
+    modules['security']['firewall']['addresses'] = {}
+    modules['security']['firewall']['policy_lists'] = []
+
+    modules['security']['nat'] = {}
+    modules['security']['nat']['destination-translation'] = {}
+    modules['security']['nat']['source-translation'] = {}
+    modules['security']['nat']['policy_lists'] = []
 
     modules['net']['address_lists'] = {}
     modules['net']['port_lists'] = {}
