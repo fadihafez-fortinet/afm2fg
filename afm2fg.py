@@ -91,7 +91,10 @@ class Port:
 
     def __init__(self, name, value, comment, protocol=''):
         self.name = name
-        self.ports = value
+        if type(value) is not list:    
+            self.ports = [value]
+        else:
+            self.ports = value
         self.comment = comment
         self.protocol = protocol
 
@@ -112,11 +115,15 @@ class Rule:
         "addresses": [Address],
         "ports": [Port]
     }
+    translations = {
+        "source": "",
+        "destination": ""
+    }
 
     def printFGFormattedAddress():
         pass
 
-    def __init__(self, name, action, description, protocol, log, rule_number, source, destination) -> None:
+    def __init__(self, name, action, description, protocol, log, rule_number, source, destination, translations=None) -> None:
         self.name = name or ""
         self.action = action or "accept-decisively"
         self.description = description or ""
@@ -126,11 +133,14 @@ class Rule:
         self.source = source or {}
         self.destination = destination or {}
         self.description = description or ""
+        self.translations = translations
         
 class Policy:
     name = ""
     rule_list = []
     rule_numbers = []
+
+    type = "" # fw | nat
 
     srcintf = "any"
     dstintf = "any"
@@ -269,6 +279,45 @@ class Policy:
         
         print("end")
 
+    def printFGFormattedNATPolicy(self):
+
+        print("config firewall policy")
+
+        for r in self.rule_list:
+            overall_rule_num = 1
+            
+            rule_pre_name = shortenRuleName(self.name)
+
+            rule_name = shortenRuleName(r.name)
+            print("# " + self.name + "__" + rule_name)
+            print("    edit 0")
+            print("        set name " + rule_pre_name + "__" + rule_name + "att_" + str(attempt_num))
+            print("        set srcintf " + self.srcintf)
+            print("        set dstintf " + self.dstintf)
+            print("        set comments " + self.name + "_" + r.name)
+
+            self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"])
+
+            if r.translations:
+                if r.translations["destination"]:
+                    print("        set dstaddr " + removeCommonPrepend(r.translations["destination"]))
+                if r.translations["source"]:
+                    print("        set ippool enable")
+                    print("        set poolname " + removeCommonPrepend(r.translations["source"]))
+
+            self.printDstPorts(r.destination["ports"])
+            # self.printService(r.protocol)
+            self.printAction(r.action)
+            self.printLog(r.log)
+
+            print("        set schedule always")
+            print("    next")
+
+            overall_rule_num += 1
+            print("")
+        
+        print("end")
+
     def validate(self):
 
         errorcount = 0
@@ -303,7 +352,8 @@ class Policy:
         print(str(errorcount) + " errors found in policy")
 
 
-    def __init__(self, name, rules, rule_numbers) -> None:
+    def __init__(self, type, name, rules, rule_numbers) -> None:
+        self.type = type
         self.name = name
         self.rule_list = rules
         self.rule_numbers = rule_numbers
@@ -451,42 +501,6 @@ def parseLists(list, list_type, name):
     return curr_list
     
 # enddef parseLists
-
-def readKeyValues(f):
-
-    linenum = 0
-    kv = {}
-    arr = []
-
-    for line in f:
-        linenum += 1
-        #print(str(linenum) + ": " + line, end='')
-
-        # entering a module
-        """         if line.find("{") >= 0 and line.split()[0] in modules:
-            modname = line.split()[1]
-            print("entering module " + modname)
-            kv[modname] = readKeyValues(f)
-            return kv """
-
-        if line.find("{") > -1:
-            keyname = line.split()[0]
-            print("entering values")
-            kv[keyname] = readKeyValues(f)
-        elif line.find("}") > -1:
-            print("exiting values or module")
-            if len(arr) > 0:
-                return arr
-            else:
-                return kv
-        elif len(line.split()) == 2:
-            keyname, val = line.split()
-            kv[keyname] = val
-        elif len(line.split()) == 1:
-            keyname = line.strip()
-            arr.append(keyname)
-
-# enddef readKeyValues
 
 # read section until section ending }
 # return an array with all the lines in the section
@@ -753,7 +767,7 @@ def createFGServiceObjects():
 
         ports[name] = Port(name, port_numbers, comment)
 
-    for k, port_list in modules['security']['firewall']['port_lists'].items():
+    for k, port_list in modules['security']['firewall']['ports'].items():
         name = port_list['name']
         comment = ''
         port_numbers = []
@@ -767,7 +781,7 @@ def createFGServiceObjects():
 
         ports[name] = Port(name, port_numbers, comment)
 
-    for k, port_list in modules['security']['firewall']['ports'].items():
+    for k, port_list in modules['security']['firewall']['port_lists'].items():
         name = port_list['name']
         comment = ''
         port_numbers = []
@@ -777,7 +791,7 @@ def createFGServiceObjects():
             name = shortname
 
         for p in port_list['ports']:
-            port_numbers.append(p)
+            port_numbers.extend(ports[removeCommonPrepend(p)].ports)
 
         ports[name] = Port(name, port_numbers, comment)
 
@@ -946,9 +960,148 @@ def createFGPort(port, protocol):
 
 # enddef createFGPort
 
-def createFGPolicy():
+def createNATPools():
+
+    print("config firewall ippool")
+
+    for stp in modules["security"]["nat"]["source-translation"]:
+        p = modules["security"]["nat"]["source-translation"][stp]
+        print("    edit " + p["name"])
+        for a in p["addresses"]:
+            if "/" not in a or a.endswith("/32"):
+                a_nosubnet = a.split("/")[0]
+                print("        set startip " + a_nosubnet)
+                print("        set endip " + a_nosubnet)
+                if p["type"] == "static-nat":
+                    print("        set type one-to-one")
+        print("    next")
+    print("end")
+
+# enddef createNATPools
+
+def createVIPs():
+
+    print("conf firewall vip")
+
+    for p in policies:
+        if p.type == "nat":
+            for r in p.rule_list:
+                if r.translations and r.translations["destination"]:
+                    dst_tr_name = removeCommonPrepend(r.translations["destination"])
+                    print("    edit " + dst_tr_name)
+                    print("        set extip " + r.destination["addresses"][0])
+                    print("        set mappedip " + modules["security"]["nat"]["destination-translation"][dst_tr_name]["addresses"][0])
+                    print("        set extintf any")
+                    print("    next")
+
+    print("end")
+
+# enddef createVIPs
+
+def updateGlobalRulesList(r, rule):
 
     global global_rule_number
+
+    curr_rule_dests = {
+        'addresses': [],
+        'ports': [],
+        'raw-ports': []
+    }
+
+    ip_protocol = ""
+    if "ip-protocol" in rule:
+        ip_protocol = rule['ip-protocol']
+
+    if "destination" in rule:
+        destination = rule['destination']
+        
+        if "address-lists" in destination:
+            for dst_address_list_name in destination['address-lists']:
+                al = extractAddressesFromAddressList(removeCommonPrepend(dst_address_list_name))
+                curr_rule_dests["addresses"].extend(al)
+
+        if "addresses" in destination:
+            curr_rule_dests["addresses"].extend(destination["addresses"])
+            for a in destination["addresses"]:
+                createFGAddress('',a)
+            
+        
+        if "port-lists" in destination:                        
+            for dst_port_list_name in destination["port-lists"]:
+                curr_rule_dests["ports"].append(ports[removeCommonPrepend(dst_port_list_name)])
+                
+                # we know the L4 protocol so lets apply it to global port var now
+                applyL4ProtocolToPort(removeCommonPrepend(dst_port_list_name), ip_protocol)
+
+                # pl = extractPortsFromPortsList(dst_port_list_name)
+                # curr_rule_dests["ports"].extend(pl)
+
+        if "ports" in destination:
+            for dst_port in destination["ports"]:
+                dp = createFGPort(dst_port, ip_protocol)
+                curr_rule_dests["ports"].append(dp)                                
+            
+            curr_rule_dests["raw-ports"].extend(destination["ports"])
+
+    curr_rule_srcs = {
+        'addresses': [],
+        'ports': [],
+        'raw-ports': []
+    }
+
+    if "source" in rule:
+        source = rule['source']
+
+        if "address-lists" in source:
+            for src_address_list_name in source['address-lists']:
+                al = extractAddressesFromAddressList(removeCommonPrepend(src_address_list_name))
+                curr_rule_srcs["addresses"].extend(al)
+
+        if "addresses" in source:
+            curr_rule_srcs["addresses"].extend(source["addresses"])
+            for a in source["addresses"]:
+                createFGAddress('',a)
+        
+        # NOTE: never seen port lists in source but let's leave this in anyways                    
+        if "port-lists" in source:
+            for src_port_list_name in source["port-lists"]:
+                pl = ports[removeCommonPrepend(src_port_list_name)]
+                curr_rule_srcs["ports"].append(pl)
+
+        if "ports" in source:
+            curr_rule_srcs["raw-ports"].extend(source["ports"])
+        
+    curr_rule_translations = {
+        'source': "",
+        'destination': ""
+    }
+
+    if "translation" in rule:
+        if "source" in rule["translation"]:
+            curr_rule_translations["source"] = rule["translation"]["source"]
+
+        if "destination" in rule["translation"]:
+            curr_rule_translations["destination"] = rule["translation"]["destination"]
+    else:
+        curr_rule_translations = None
+
+
+    if "rule-number" in rule:
+        global_rule_number = rule['rule-number']
+    else:
+        global_rule_number += 10
+
+    if 'ip-protocol' not in rule:
+        rule['ip-protocol'] = 'tcp'
+
+    if 'action' not in rule:
+        rule['action'] = 'accept'
+
+    curr_rule_obj = Rule(r, rule['action'], '', rule['ip-protocol'], 1, global_rule_number, curr_rule_srcs, curr_rule_dests, curr_rule_translations)
+    return curr_rule_obj
+    # rules.append(curr_rule_obj)
+
+def createFGPolicy():
 
     for rule_list in modules['security']['firewall']['rule_lists']:
 
@@ -961,90 +1114,12 @@ def createFGPolicy():
                     # print(rlist[r])
                     curr_rule = rlist[r]
 
-                    curr_rule_dests = {
-                        'addresses': [],
-                        'ports': [],
-                        'raw-ports': []
-                    }
-
-                    ip_protocol = ""
-                    if "ip-protocol" in curr_rule:
-                        ip_protocol = curr_rule['ip-protocol']
-
-                    if "destination" in curr_rule:
-                        destination = curr_rule['destination']
-                        
-                        if "address-lists" in destination:
-                            for dst_address_list_name in destination['address-lists']:
-                                al = extractAddressesFromAddressList(removeCommonPrepend(dst_address_list_name))
-                                curr_rule_dests["addresses"].extend(al)
-
-                        if "addresses" in destination:
-                            curr_rule_dests["addresses"].extend(destination["addresses"])
-                            for a in destination["addresses"]:
-                                createFGAddress('',a)
-                            
-                        
-                        if "port-lists" in destination:                        
-                            for dst_port_list_name in destination["port-lists"]:
-                                curr_rule_dests["ports"].append(ports[removeCommonPrepend(dst_port_list_name)])
-                                
-                                # we know the L4 protocol so lets apply it to global port var now
-                                applyL4ProtocolToPort(removeCommonPrepend(dst_port_list_name), ip_protocol)
-
-                                # pl = extractPortsFromPortsList(dst_port_list_name)
-                                # curr_rule_dests["ports"].extend(pl)
-
-                        if "ports" in destination:
-                            for dst_port in destination["ports"]:
-                                dp = createFGPort(dst_port, ip_protocol)
-                                curr_rule_dests["ports"].append(dp)                                
-                            
-                            curr_rule_dests["raw-ports"].extend(destination["ports"])
-
-                    curr_rule_srcs = {
-                        'addresses': [],
-                        'ports': [],
-                        'raw-ports': []
-                    }
-
-                    if "source" in curr_rule:
-                        source = curr_rule['source']
-
-                        if "address-lists" in source:
-                            for src_address_list_name in source['address-lists']:
-                                al = extractAddressesFromAddressList(removeCommonPrepend(src_address_list_name))
-                                curr_rule_srcs["addresses"].extend(al)
-
-                        if "addresses" in source:
-                            curr_rule_srcs["addresses"].extend(source["addresses"])
-                            for a in source["addresses"]:
-                                createFGAddress('',a)
-                        
-                        # NOTE: never seen port lists in source but let's leave this in anyways                    
-                        if "port-lists" in source:
-                            for src_port_list_name in source["port-lists"]:
-                                pl = ports[removeCommonPrepend(src_port_list_name)]
-                                curr_rule_srcs["ports"].append(pl)
-
-                        if "ports" in source:
-                            curr_rule_srcs["raw-ports"].extend(source["ports"])
-                        
-                    if "rule-number" in curr_rule:
-                        global_rule_number = curr_rule['rule-number']
-                    else:
-                        global_rule_number += 10
-
-                    if 'ip-protocol' not in curr_rule:
-                        curr_rule['ip-protocol'] = 'tcp'
-
-                    curr_rule_obj = Rule(r, curr_rule['action'], '', curr_rule['ip-protocol'], 1, global_rule_number, curr_rule_srcs, curr_rule_dests)
-                    # rules.append(curr_rule_obj)
+                    curr_rule_obj = updateGlobalRulesList(r, curr_rule)
                     curr_rule_list.append(curr_rule_obj)
 
                 rules_list[rule_list['name']] = curr_rule_list
                 
-            print("")
+            # print("")
 
     for policy in modules['security']['firewall']['policy_lists']:
         policy_name = policy["name"]
@@ -1062,7 +1137,7 @@ def createFGPolicy():
                 rule_num_incrementer += 1
                 rule_nums_for_this_policy.append(str(rule_num_incrementer))
 
-            print(rule_list_name)
+            # print(rule_list_name)
 
             if "rule-list" in rule_list:
                 rules_for_this_policy.append(rules_list[removeCommonPrepend(rule_list['rule-list'])])
@@ -1070,8 +1145,37 @@ def createFGPolicy():
                 # TODO: create a new rule with the values provided in this rule
                 pass
 
-        p = Policy(policy_name, rules_for_this_policy, rule_nums_for_this_policy)
+        p = Policy("fw", policy_name, rules_for_this_policy, rule_nums_for_this_policy)
         policies.append(p)
+
+    for policy in modules['security']['nat']['policy_lists']:
+        policy_name = policy["name"]
+        rules_for_this_policy = []
+        rule_nums_for_this_policy = []
+        rule_num_incrementer = 0
+
+        for rule in policy["rules"]:
+            rule_list_name = list(rule.keys())[0]
+            rule_details = rule[rule_list_name]
+
+            if "rule-number" in rule_details:
+                rule_nums_for_this_policy.append(rule_details["rule-number"])
+            else:
+                rule_num_incrementer += 1
+                rule_nums_for_this_policy.append(str(rule_num_incrementer))
+
+            # print(rule_list_name)
+
+            rule_details['name'] = rule_list_name
+
+            curr_rule_obj = updateGlobalRulesList(rule_list_name, rule_details)
+
+            rules_for_this_policy.append(curr_rule_obj)
+
+        p = Policy("nat", policy_name, rules_for_this_policy, rule_nums_for_this_policy)
+        policies.append(p)
+
+
 
 # enddef createFGPolicy
 
@@ -1079,13 +1183,18 @@ def createFGPolicy():
 def createFGPolicies():
     
     for p in policies:
-        p.printFGFormmattedFWPolicy()
+        if p.type == "fw":
+            p.printFGFormmattedFWPolicy()
+        
+        if p.type == "nat":
+            p.printFGFormattedNATPolicy()
 
 # enddef createFGPolicies
 
 def validateAllPolicies():
     for p in policies:
-        p.validate()
+        if p.type == "fw":
+            p.validate()
         
 # enddef validateAllPolicies
 
@@ -1146,6 +1255,8 @@ if __name__ == "__main__":
         printFGAddressObjects()
         printFGServiceObjects()
 
+        createNATPools()
+        createVIPs()
         createFGPolicies()
 
         # validate that all referenced Addresses or Services in the Policies actually exist and the FortiGate configuration will not return errors when pasted into a FortiGate
