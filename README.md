@@ -1,6 +1,8 @@
 # afm2fg
 Python script that takes in an F5 AFM configuration and outputs a FortiGate configuration
 
+08/30/2022 - Added support for NAT policies.  Creates VIPs for destination NAT and IPPools for source NAT.
+
 08/03/2022 - Currently converts AFM net and security sections only
 
 First step is to convert the F5 AFM configuration into JSON format
