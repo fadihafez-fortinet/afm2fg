@@ -559,7 +559,6 @@ def processNet(section):
         ports = parseList(section)
         if "port-lists" in ports[0]['net']:
             modules['net']['port_lists'][name] = {'name': name, 'type': 'port-lists', 'ports': ports[0]['net']['port-lists']}
-
         if "ports" in ports[0]['net']:
             modules['net']['port_lists'][name] = {'name': name, 'type': 'ports', 'ports': ports[0]['net']['ports']}
 
@@ -758,9 +757,10 @@ def createFGServiceObjects():
         comment = ''
         port_numbers = []
 
-        if len(name) > 78:
-            shortname, comment = shortenServiceName(name)
-            name = shortname
+        # NEED TO APPLY THIS TO THE LOOKUP TOO
+        # if len(name) > 78:
+        #     shortname, comment = shortenServiceName(name)
+        #     name = shortname
 
         for p in port_list['ports']:
             port_numbers.append(p)
@@ -1025,8 +1025,7 @@ def updateGlobalRulesList(r, rule):
             for a in destination["addresses"]:
                 createFGAddress('',a)
             
-        
-        if "port-lists" in destination:                        
+        if "port-lists" in destination:
             for dst_port_list_name in destination["port-lists"]:
                 curr_rule_dests["ports"].append(ports[removeCommonPrepend(dst_port_list_name)])
                 
