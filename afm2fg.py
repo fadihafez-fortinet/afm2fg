@@ -26,7 +26,7 @@ import re
 module_names = ["net","security","pem","auth","sys","ltm","cm","cli"]
 modules = {}
 
-attempt_num = 12
+attempt_num = 0
 
 protocol_numbers = {
     'ospf': 84,
@@ -77,19 +77,17 @@ class Port:
     type = ""    # ports | port-lists
     description = ""
     comment = ""
-    protocol = ""
+    protocol = []
     ports = []
 
     def getPort(self):
         return self.ports
 
-    def setProtocol(self, protocol):
-        self.protocol = protocol
+    def addProtocol(self, protocol):
+        if protocol not in self.protocol:
+            self.protocol.append(protocol)
 
-    def __init__(self) -> None:
-        pass
-
-    def __init__(self, name, value, comment, protocol=''):
+    def __init__(self, name, value, comment, protocol=[]):
         self.name = name
         if type(value) is not list:    
             self.ports = [value]
@@ -132,7 +130,6 @@ class Rule:
         self.rule_number = rule_number or -1
         self.source = source or {}
         self.destination = destination or {}
-        self.description = description or ""
         self.translations = translations
         
 class Policy:
@@ -211,7 +208,7 @@ class Policy:
     def printDstPorts(self, dst_ports_list):
 
         if len(dst_ports_list) == 0:
-            print("        set service ALL_TCP ALL_UDP")
+            print("        set service ALL")
             return
 
         print("        set service ", end="")
@@ -241,7 +238,7 @@ class Policy:
         if log == 1:
             print("        set logtraffic all")
 
-    def printFGFormmattedFWPolicy(self):
+    def printFGFormattedFWPolicy(self):
 
         rule_list_counter = 0
 
@@ -259,7 +256,12 @@ class Policy:
                 # print("    edit " + self.rule_numbers[rule_list_counter] + str(overall_rule_num) + r.rule_number)
                 # print("    edit " + str(rule_number))
                 print("    edit 0")
-                print("        set name " + rule_pre_name + "__" + rule_name + "att_" + str(attempt_num))
+
+                if attempt_num:
+                    print("        set name " + rule_pre_name + "__" + rule_name + "att_" + str(attempt_num))
+                else:
+                    print("        set name " + rule_pre_name + "__" + rule_name)
+
                 print("        set srcintf " + self.srcintf)
                 print("        set dstintf " + self.dstintf)
                 print("        set comments " + self.name + "_" + r.name)
@@ -288,10 +290,17 @@ class Policy:
             
             rule_pre_name = shortenRuleName(self.name)
 
-            rule_name = shortenRuleName(r.name)
-            print("# " + self.name + "__" + rule_name)
+            # rule_name = shortenRuleName(r.name)
+            rule_name = shortenRuleName(rule_pre_name + "__" + r.name)
+
+            print("# " + self.name + "__" + r.name)
             print("    edit 0")
-            print("        set name " + rule_pre_name + "__" + rule_name + "att_" + str(attempt_num))
+
+            if attempt_num:
+                print("        set name " + rule_name + "att_" + str(attempt_num))
+            else:
+                print("        set name " + rule_name)
+
             print("        set srcintf " + self.srcintf)
             print("        set dstintf " + self.dstintf)
             print("        set comments " + self.name + "_" + r.name)
@@ -758,14 +767,14 @@ def createFGServiceObjects():
         port_numbers = []
 
         # NEED TO APPLY THIS TO THE LOOKUP TOO
-        # if len(name) > 78:
-        #     shortname, comment = shortenServiceName(name)
-        #     name = shortname
+        if len(name) > 78:
+             shortname, comment = shortenServiceName(name)
+             name = shortname
 
         for p in port_list['ports']:
             port_numbers.append(p)
 
-        ports[name] = Port(name, port_numbers, comment)
+        ports[name] = Port(name, port_numbers, comment, [])
 
     for k, port_list in modules['security']['firewall']['ports'].items():
         name = port_list['name']
@@ -779,7 +788,7 @@ def createFGServiceObjects():
         for p in port_list['ports']:
             port_numbers.append(p)
 
-        ports[name] = Port(name, port_numbers, comment)
+        ports[name] = Port(name, port_numbers, comment, [])
 
     for k, port_list in modules['security']['firewall']['port_lists'].items():
         name = port_list['name']
@@ -793,7 +802,7 @@ def createFGServiceObjects():
         for p in port_list['ports']:
             port_numbers.extend(ports[removeCommonPrepend(p)].ports)
 
-        ports[name] = Port(name, port_numbers, comment)
+        ports[name] = Port(name, port_numbers, comment, [])
 
 
 # enddef createFGServiceObjects
@@ -848,25 +857,24 @@ def printFGServiceObjects():
         if ports[p].comment != '':
             print("        set comment " + this_port.comment)
 
-        if this_port.protocol == "":
-            this_port.protocol = "tcp"
-
-        if this_port.protocol == "tcp":
-        # if "tcp-" in lower_pname or "tcp_" in lower_pname:
+        if len(this_port.protocol) == 0:
+            this_port.protocol.append("tcp")
             print("        set tcp-portrange ", end='')
             print(*this_port.ports)
-        elif this_port.protocol == "udp":
-        # elif "udp-" in lower_pname or "udp_" in lower_pname:
             print("        set udp-portrange ", end='')
             print(*this_port.ports)
-        elif this_port.protocol == "icmp":
+
+        if "tcp" in this_port.protocol:
+            print("        set tcp-portrange ", end='')
+            print(*this_port.ports)
+
+        if "udp" in this_port.protocol:
+            print("        set udp-portrange ", end='')
+            print(*this_port.ports)
+
+        if "icmp" in this_port.protocol:
             print("        set protcol ICMP ", end='')
             print("        unset icmptype ", end='')
-        else:
-            print("        set tcp-portrange ", end='')
-            print(*this_port.ports)
-            print("        set udp-portrange ", end='')
-            print(*this_port.ports)
             
         print("    next")
 
@@ -942,7 +950,7 @@ def extractPortsFromPortsList(port_list_name):
 
 def applyL4ProtocolToPort(dst_port_list_name, ip_protocol):
     if dst_port_list_name in ports:
-        ports[dst_port_list_name].setProtocol(ip_protocol)
+        ports[dst_port_list_name].addProtocol(ip_protocol)
 
 # enddef applyL4ProtocolToPort
 
@@ -952,10 +960,10 @@ def createFGPort(port, protocol):
         if len(ports[p].ports) > 1:
             continue
 
-        if port == ports[p].ports[0] and ports[p].protocol != "":
+        if port == ports[p].ports[0] and protocol in ports[p].protocol:
                 return ports[p]
         
-    ports[port] = Port(port, port, '', protocol)
+    ports[port] = Port(port, port, '', [protocol])
     return ports[port]
 
 # enddef createFGPort
@@ -1027,7 +1035,12 @@ def updateGlobalRulesList(r, rule):
             
         if "port-lists" in destination:
             for dst_port_list_name in destination["port-lists"]:
-                curr_rule_dests["ports"].append(ports[removeCommonPrepend(dst_port_list_name)])
+                dpln = removeCommonPrepend(dst_port_list_name)
+                if len(dpln) > 78:
+                    shortened_dpln, desc = shortenServiceName(dpln)
+                    curr_rule_dests["ports"].append(ports[shortened_dpln])
+                else:
+                    curr_rule_dests["ports"].append(ports[dpln])
                 
                 # we know the L4 protocol so lets apply it to global port var now
                 applyL4ProtocolToPort(removeCommonPrepend(dst_port_list_name), ip_protocol)
@@ -1091,7 +1104,7 @@ def updateGlobalRulesList(r, rule):
         global_rule_number += 10
 
     if 'ip-protocol' not in rule:
-        rule['ip-protocol'] = 'tcp'
+        rule['ip-protocol'] = 'all'
 
     if 'action' not in rule:
         rule['action'] = 'accept'
@@ -1109,16 +1122,11 @@ def createFGPolicy():
         if 'rules' in rule_list:
             for rlist in rule_list["rules"]:
                 for r in rlist:
-                    # print(r)
-                    # print(rlist[r])
                     curr_rule = rlist[r]
-
                     curr_rule_obj = updateGlobalRulesList(r, curr_rule)
                     curr_rule_list.append(curr_rule_obj)
 
-                rules_list[rule_list['name']] = curr_rule_list
-                
-            # print("")
+                rules_list[rule_list['name']] = curr_rule_list                
 
     for policy in modules['security']['firewall']['policy_lists']:
         policy_name = policy["name"]
@@ -1183,7 +1191,7 @@ def createFGPolicies():
     
     for p in policies:
         if p.type == "fw":
-            p.printFGFormmattedFWPolicy()
+            p.printFGFormattedFWPolicy()
         
         if p.type == "nat":
             p.printFGFormattedNATPolicy()
