@@ -5,3 +5,6 @@ create10K_SimplePolicies.sh
 .gitignore
 40K and 175K simple FG policies.zip
 175K_simple_policies_aug_23_2022.conf.zip
+.DS_Store
+a
+b
