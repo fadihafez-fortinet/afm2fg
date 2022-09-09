@@ -22,11 +22,14 @@ from unicodedata import name
 from unittest import skip
 from xml.sax.handler import property_xml_string
 import re
+import ipaddress
 
 module_names = ["net","security","pem","auth","sys","ltm","cm","cli"]
 modules = {}
 
 attempt_num = 0
+MAX_RULE_NAME_LEN = 35
+MAX_SERVICE_NAME_LEN = 78
 
 protocol_numbers = {
     'ospf': 84,
@@ -100,6 +103,7 @@ class Port:
 class Rule:   
 
     name = ""
+    rule_list_name = ""
     action = "" # action = accept | accept-decisively | drop | reject
     description = ""
     protocol = ""
@@ -121,8 +125,9 @@ class Rule:
     def printFGFormattedAddress():
         pass
 
-    def __init__(self, name, action, description, protocol, log, rule_number, source, destination, translations=None) -> None:
+    def __init__(self, name, rule_list_name, action, description, protocol, log, rule_number, source, destination, translations=None) -> None:
         self.name = name or ""
+        self.rule_list_name = rule_list_name or ""
         self.action = action or "accept-decisively"
         self.description = description or ""
         self.protocol = protocol or "tcp"
@@ -214,7 +219,7 @@ class Policy:
         print("        set service ", end="")
 
         for s in dst_ports_list:
-            if len(s.name) > 78:
+            if len(s.name) > MAX_SERVICE_NAME_LEN:
                 shortname, s.comment = shortenServiceName(s.name)
                 print(shortname + " ", end="")
             else:
@@ -231,7 +236,7 @@ class Policy:
             print("        set service ALL_ICMP")
 
     def printAction(self, action):
-        if action == "accept-decisively":
+        if action == "accept-decisively" or action == "accept":
             print("        set action accept")
 
     def printLog(self, log):
@@ -250,21 +255,23 @@ class Policy:
             rule_pre_name = shortenRuleName(self.name)
 
             for r in rl:
-                rule_name = shortenRuleName(r.name)
+                rule_name = shortenRuleName(r.rule_list_name + "/" + r.name)
                 rule_number = 100000 * int(self.rule_numbers[rule_list_counter]) + 1000 * overall_rule_num + 10 * int(r.rule_number)
-                print("# " + self.name + "__" + r.name)
+                print("# " + self.name + "/" + r.name)
                 # print("    edit " + self.rule_numbers[rule_list_counter] + str(overall_rule_num) + r.rule_number)
                 # print("    edit " + str(rule_number))
                 print("    edit 0")
 
-                if attempt_num:
-                    print("        set name " + rule_pre_name + "__" + rule_name + "att_" + str(attempt_num))
-                else:
-                    print("        set name " + rule_pre_name + "__" + rule_name)
+                # if attempt_num:
+                #     print("        set name " + rule_name + "att_" + str(attempt_num))
+                # else:
+                #     print("        set name " + rule_name)
+
+                print("        set name policy" + str(r.rule_number))
 
                 print("        set srcintf " + self.srcintf)
                 print("        set dstintf " + self.dstintf)
-                print("        set comments " + self.name + "_" + r.name)
+                print("        set comments " + self.name + "/" + r.rule_list_name + "/" + r.name)
 
                 self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"])
                 self.printDstPorts(r.destination["ports"])
@@ -291,32 +298,35 @@ class Policy:
             rule_pre_name = shortenRuleName(self.name)
 
             # rule_name = shortenRuleName(r.name)
-            rule_name = shortenRuleName(rule_pre_name + "__" + r.name)
+            rule_name = shortenRuleName(rule_pre_name + "/" + r.name)
 
-            print("# " + self.name + "__" + r.name)
+            print("# " + self.name + "/" + r.name)
             print("    edit 0")
 
-            if attempt_num:
-                print("        set name " + rule_name + "att_" + str(attempt_num))
-            else:
-                print("        set name " + rule_name)
+            # if attempt_num:
+            #     print("        set name " + rule_name + "att_" + str(attempt_num))
+            # else:
+            #     print("        set name " + rule_name)
+
+            print("        set name policy" + str(r.rule_number))
 
             print("        set srcintf " + self.srcintf)
             print("        set dstintf " + self.dstintf)
             print("        set comments " + self.name + "_" + r.name)
 
             self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"])
+            self.printAction(r.action)
 
             if r.translations:
                 if r.translations["destination"]:
                     print("        set dstaddr " + removeCommonPrepend(r.translations["destination"]))
                 if r.translations["source"]:
+                    print("        set nat enable")
                     print("        set ippool enable")
                     print("        set poolname " + removeCommonPrepend(r.translations["source"]))
 
             self.printDstPorts(r.destination["ports"])
             # self.printService(r.protocol)
-            self.printAction(r.action)
             self.printLog(r.log)
 
             print("        set schedule always")
@@ -377,13 +387,14 @@ ports = {}
 rules_list = {}
 policies = []
 policy_names = []
+nat_translation_dups = []
 global_rule_number = 0
 
 
 def shortenRuleName(rule_name):
     new_name = ""
 
-    if len(rule_name) < 40:
+    if len(rule_name) < MAX_RULE_NAME_LEN:
         return rule_name
 
     orig_name = rule_name.strip("_").strip("-").split("_")
@@ -575,6 +586,33 @@ def processNet(section):
 
 # enddef processNet
 
+def markNATDups():
+
+    dt_names = []
+    dt_addresses = []
+    st_names = []
+    st_addresses = []
+
+    for dt_name in modules['security']['nat']['destination-translation']:
+
+        dt = modules['security']['nat']['destination-translation'][dt_name]
+        if dt["addresses"][0] in dt_addresses:
+            dt["dup"] = {"duplicate_of" : dt_names[dt_addresses.index(dt["addresses"][0])]}
+
+        dt_names.append(dt_name)
+        dt_addresses.append(dt["addresses"][0])
+    
+
+    for st_name in modules['security']['nat']['source-translation']:
+
+        st = modules['security']['nat']['source-translation'][st_name]
+        if st["addresses"][0] in st_addresses:
+            st["dup"] = {"duplicate_of" : st_names[st_addresses.index(st["addresses"][0])]}
+
+        st_names.append(st_name)
+        st_addresses.append(st["addresses"][0])
+
+
 def processSecurity(section):
     # print(section)
     modules['security']['afm_config'].append(section)
@@ -616,9 +654,6 @@ def processSecurity(section):
 
         elif type == "policy":
             modules['security']['nat']['policy_lists'].append(parseLists(section, 'rules', name))
-
-        pass
-        # TODO: implement elements for NAT objects
 
     return 0
 
@@ -767,7 +802,7 @@ def createFGServiceObjects():
         port_numbers = []
 
         # NEED TO APPLY THIS TO THE LOOKUP TOO
-        if len(name) > 78:
+        if len(name) > MAX_SERVICE_NAME_LEN:
              shortname, comment = shortenServiceName(name)
              name = shortname
 
@@ -781,7 +816,7 @@ def createFGServiceObjects():
         comment = ''
         port_numbers = []
 
-        if len(name) > 78:
+        if len(name) > MAX_SERVICE_NAME_LEN:
             shortname, comment = shortenServiceName(name)
             name = shortname
 
@@ -795,7 +830,7 @@ def createFGServiceObjects():
         comment = ''
         port_numbers = []
 
-        if len(name) > 78:
+        if len(name) > MAX_SERVICE_NAME_LEN:
             shortname, comment = shortenServiceName(name)
             name = shortname
 
@@ -897,9 +932,9 @@ def createFGAddress(name, addr):
         return
 
     # is this an address or a range of addresses, or just an address-list
-    if  re.fullmatch('^\s*([0-9]{1,3}.){3}[0-9]{1,3}[/]{0,1}\d{0,2}\D*$', addr):
+    if  re.fullmatch('^\s*([0-9]{1,3}\.){3}[0-9]{1,3}[/]{0,1}\d{0,2}\D*$', addr):
         addresses[a] = Address(a, 4, 'subnet', a)
-    elif re.fullmatch('^\s*([0-9]{1,3}.){3}[0-9]{1,3}-([0-9]{1,3}.){3}[0-9]{1,3}\D*$', addr):
+    elif re.fullmatch('^\s*([0-9]{1,3}\.){3}[0-9]{1,3}-([0-9]{1,3}\.){3}[0-9]{1,3}\D*$', addr):
         addresses[a] = Address(a, 4, 'range', a)
     elif addr.count(':') >= 2 and '-' in addr:
         addresses[a] = Address(a, 6, 'range', a)
@@ -968,20 +1003,35 @@ def createFGPort(port, protocol):
 
 # enddef createFGPort
 
+def getFirstAndLastIP(subnet):
+    net = ipaddress.ip_network(subnet)
+    return net[1].exploded, net[-1].exploded
+
+# enddef getFirstAndLastIP
+
 def createNATPools():
 
     print("config firewall ippool")
 
     for stp in modules["security"]["nat"]["source-translation"]:
         p = modules["security"]["nat"]["source-translation"][stp]
+        if 'dup' in p:
+            continue
+
         print("    edit " + p["name"])
         for a in p["addresses"]:
             if "/" not in a or a.endswith("/32"):
                 a_nosubnet = a.split("/")[0]
                 print("        set startip " + a_nosubnet)
                 print("        set endip " + a_nosubnet)
-                if p["type"] == "static-nat":
-                    print("        set type one-to-one")
+            elif "/" in a:
+                s, e = getFirstAndLastIP(a)
+                print("        set startip " + s)
+                print("        set endip " + e)
+
+        if p["type"] == "static-nat":
+            print("        set type one-to-one")
+
         print("    next")
     print("end")
 
@@ -1006,7 +1056,7 @@ def createVIPs():
 
 # enddef createVIPs
 
-def updateGlobalRulesList(r, rule):
+def updateGlobalRulesList(r, rule, rule_list_name):
 
     global global_rule_number
 
@@ -1090,7 +1140,11 @@ def updateGlobalRulesList(r, rule):
 
     if "translation" in rule:
         if "source" in rule["translation"]:
-            curr_rule_translations["source"] = rule["translation"]["source"]
+            st = removeCommonPrepend(rule["translation"]["source"])
+            if "dup" in modules['security']['nat']['source-translation'][st]:
+                curr_rule_translations["source"] = modules['security']['nat']['source-translation'][st]['dup']['duplicate_of']
+            else:
+                curr_rule_translations["source"] = rule["translation"]["source"]
 
         if "destination" in rule["translation"]:
             curr_rule_translations["destination"] = rule["translation"]["destination"]
@@ -1098,10 +1152,10 @@ def updateGlobalRulesList(r, rule):
         curr_rule_translations = None
 
 
-    if "rule-number" in rule:
-        global_rule_number = rule['rule-number']
-    else:
-        global_rule_number += 10
+    # if "rule-number" in rule:
+    #     global_rule_number = rule['rule-number']
+    # else:
+    global_rule_number += 10
 
     if 'ip-protocol' not in rule:
         rule['ip-protocol'] = 'all'
@@ -1109,7 +1163,7 @@ def updateGlobalRulesList(r, rule):
     if 'action' not in rule:
         rule['action'] = 'accept'
 
-    curr_rule_obj = Rule(r, rule['action'], '', rule['ip-protocol'], 1, global_rule_number, curr_rule_srcs, curr_rule_dests, curr_rule_translations)
+    curr_rule_obj = Rule(r, rule_list_name, rule['action'], '', rule['ip-protocol'], 1, global_rule_number, curr_rule_srcs, curr_rule_dests, curr_rule_translations)
     return curr_rule_obj
     # rules.append(curr_rule_obj)
 
@@ -1123,7 +1177,7 @@ def createFGPolicy():
             for rlist in rule_list["rules"]:
                 for r in rlist:
                     curr_rule = rlist[r]
-                    curr_rule_obj = updateGlobalRulesList(r, curr_rule)
+                    curr_rule_obj = updateGlobalRulesList(r, curr_rule, rule_list["name"])
                     curr_rule_list.append(curr_rule_obj)
 
                 rules_list[rule_list['name']] = curr_rule_list                
@@ -1135,16 +1189,14 @@ def createFGPolicy():
         rule_num_incrementer = 0
 
         for rule in policy["rules"]:
-            rule_list_name = list(rule.keys())[0]
-            rule_list = rule[rule_list_name]
+            rule_name = list(rule.keys())[0]
+            rule_list = rule[rule_name]
 
             if "rule-number" in rule_list:
                 rule_nums_for_this_policy.append(rule_list["rule-number"])
             else:
                 rule_num_incrementer += 1
                 rule_nums_for_this_policy.append(str(rule_num_incrementer))
-
-            # print(rule_list_name)
 
             if "rule-list" in rule_list:
                 rules_for_this_policy.append(rules_list[removeCommonPrepend(rule_list['rule-list'])])
@@ -1162,8 +1214,8 @@ def createFGPolicy():
         rule_num_incrementer = 0
 
         for rule in policy["rules"]:
-            rule_list_name = list(rule.keys())[0]
-            rule_details = rule[rule_list_name]
+            rule_name = list(rule.keys())[0]
+            rule_details = rule[rule_name]
 
             if "rule-number" in rule_details:
                 rule_nums_for_this_policy.append(rule_details["rule-number"])
@@ -1171,11 +1223,9 @@ def createFGPolicy():
                 rule_num_incrementer += 1
                 rule_nums_for_this_policy.append(str(rule_num_incrementer))
 
-            # print(rule_list_name)
+            rule_details['name'] = rule_name
 
-            rule_details['name'] = rule_list_name
-
-            curr_rule_obj = updateGlobalRulesList(rule_list_name, rule_details)
+            curr_rule_obj = updateGlobalRulesList(rule_name, rule_details, "")
 
             rules_for_this_policy.append(curr_rule_obj)
 
@@ -1246,14 +1296,14 @@ if __name__ == "__main__":
     if (len(sys.argv) == 3):
         fnamew = sys.argv[2]
 
-    print (fname + "\n")
-
     init()
 
     try:
         f = io.open(fname, mode='r', buffering=-1, encoding=None, errors=None, newline=None, closefd=True)
 
         readModuleValues(f)
+
+        markNATDups()
 
         createFGAddresseObjects()
         createFGServiceObjects()
