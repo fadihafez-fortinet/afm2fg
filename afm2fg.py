@@ -996,8 +996,11 @@ def createFGPort(port, protocol):
             continue
 
         if port == ports[p].ports[0] and protocol in ports[p].protocol:
-                return ports[p]
-        
+            return ports[p]
+        elif port == ports[p].ports[0]:
+            ports[p].addProtocol(protocol)
+            return ports[p]
+
     ports[port] = Port(port, port, '', [protocol])
     return ports[port]
 
