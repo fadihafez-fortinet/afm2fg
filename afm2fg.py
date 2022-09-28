@@ -47,7 +47,7 @@ port_lookups = {
 class Address:
     name = ""
     ipver = [4, 6]
-    types = ["range","subnet"]
+    types = ["range","subnet","fqdn"]
     type = ""
     value = ""
     start_ip = ""
@@ -631,6 +631,8 @@ def processSecurity(section):
                 modules['security']['firewall']['addresses'][name] = {'name': name, 'type': 'addresses', 'addresses': addresses[0]['security']['addresses'] }
             if "address-lists" in addresses[0]['security']:
                 modules['security']['firewall']['address_lists'][name] = {'name': name, 'type': 'address-lists', 'addresses': addresses[0]['security']['address-lists'] }
+            if "fqdns" in addresses[0]['security']:
+                modules['security']['firewall']['fqdns'][name] = {'name': name, 'type': 'fqdn', 'addresses': addresses[0]['security']['fqdns'] }
 
         elif type == "port-list":
             ports = parseList(section)
@@ -771,6 +773,9 @@ def createFGAddresseObjects():
             for a in address_list['addresses']:
                 createFGAddress(address_list_name, removeCommonPrepend(a))
 
+        if address_list['type'] == "fqdn":
+            pass
+
     for address_list_name, address_list in modules['security']['firewall']['addresses'].items():
 
         # name = address_list['name']
@@ -848,16 +853,22 @@ def printFGAddressObjects():
 
     for name, a in addresses.items():
         if a.ipver == 4:
-            if a.type == "range":
+            if a.type == "subnet":
+                print("    edit " + a.name)
+                print("        set subnet " + a.value)
+                print("    next")
+            elif a.type == "range":
                 print("    edit " + a.name + "_range")
                 print("        set type iprange")
                 print("        set start-ip " + a.start_ip)
                 print("        set end-ip " + a.end_ip)
                 print("    next")
-            else:
+            elif a.type == "fqdn":
                 print("    edit " + a.name)
-                print("        set subnet " + a.value)
+                print("        set type fqdn")
+                print("        set fqdn " + a.value)
                 print("    next")
+
 
     print("end")
 
@@ -865,15 +876,20 @@ def printFGAddressObjects():
 
     for name, a in addresses.items():
         if a.ipver == 6:
-            if a.type == "range":
+            if a.type == "subnet":
+                print("    edit " + a.name)
+                print("        set ip6 " + a.value)
+                print("    next")
+            elif a.type == "range":
                 print("    edit " + a.name + "_range")
                 print("        set type iprange")
                 print("        set start-ip " + a.start_ip)
                 print("        set end-ip " + a.end_ip)
                 print("    next")
-            else:
+            elif a.type == "fqdn":
                 print("    edit " + a.name)
-                print("        set ip6 " + a.value)
+                print("        set type fqdn")
+                print("        set fqdn " + a.value)
                 print("    next")
 
     print("end")
@@ -940,6 +956,8 @@ def createFGAddress(name, addr):
         addresses[a] = Address(a, 6, 'range', a)
     elif addr.count(':') >= 2:
         addresses[a] = Address(a, 6, 'subnet', a)
+    elif list(filter(addr.endswith, ['.com','.us','.edu'])):
+        addresses[a] = Address(a, 4, 'fqdn', a)
 
     return ""
 
@@ -953,8 +971,10 @@ def extractAddressesFromAddressList(address_list_name):
         address_list = modules['security']['firewall']['address_lists'][address_list_name]
     elif address_list_name in modules['security']['firewall']['addresses']:
         address_list = modules['security']['firewall']['addresses'][address_list_name]
+    elif address_list_name in modules['security']['firewall']['fqdns']:
+        address_list = modules['security']['firewall']['fqdns'][address_list_name]
 
-    if address_list["type"] == "addresses":
+    if address_list["type"] == "addresses" or address_list["type"] == "fqdn":
         # if the addresses are dicts then just get the keys.  The values are irrelevant
         if address_list["addresses"] is dict:
             return list(address_list["addresses"].keys())
@@ -1185,31 +1205,6 @@ def createFGPolicy():
 
                 rules_list[rule_list['name']] = curr_rule_list                
 
-    for policy in modules['security']['firewall']['policy_lists']:
-        policy_name = policy["name"]
-        rules_for_this_policy = []
-        rule_nums_for_this_policy = []
-        rule_num_incrementer = 0
-
-        for rule in policy["rules"]:
-            rule_name = list(rule.keys())[0]
-            rule_list = rule[rule_name]
-
-            if "rule-number" in rule_list:
-                rule_nums_for_this_policy.append(rule_list["rule-number"])
-            else:
-                rule_num_incrementer += 1
-                rule_nums_for_this_policy.append(str(rule_num_incrementer))
-
-            if "rule-list" in rule_list:
-                rules_for_this_policy.append(rules_list[removeCommonPrepend(rule_list['rule-list'])])
-            else:
-                # TODO: create a new rule with the values provided in this rule
-                pass
-
-        p = Policy("fw", policy_name, rules_for_this_policy, rule_nums_for_this_policy)
-        policies.append(p)
-
     for policy in modules['security']['nat']['policy_lists']:
         policy_name = policy["name"]
         rules_for_this_policy = []
@@ -1235,7 +1230,30 @@ def createFGPolicy():
         p = Policy("nat", policy_name, rules_for_this_policy, rule_nums_for_this_policy)
         policies.append(p)
 
+    for policy in modules['security']['firewall']['policy_lists']:
+        policy_name = policy["name"]
+        rules_for_this_policy = []
+        rule_nums_for_this_policy = []
+        rule_num_incrementer = 0
 
+        for rule in policy["rules"]:
+            rule_name = list(rule.keys())[0]
+            rule_list = rule[rule_name]
+
+            if "rule-number" in rule_list:
+                rule_nums_for_this_policy.append(rule_list["rule-number"])
+            else:
+                rule_num_incrementer += 1
+                rule_nums_for_this_policy.append(str(rule_num_incrementer))
+
+            if "rule-list" in rule_list:
+                rules_for_this_policy.append(rules_list[removeCommonPrepend(rule_list['rule-list'])])
+            else:
+                # TODO: create a new rule with the values provided in this rule
+                pass
+
+        p = Policy("fw", policy_name, rules_for_this_policy, rule_nums_for_this_policy)
+        policies.append(p)
 
 # enddef createFGPolicy
 
@@ -1271,6 +1289,7 @@ def init():
     modules['security']['firewall']['rule_lists'] = []
     modules['security']['firewall']['port_lists'] = {}
     modules['security']['firewall']['address_lists'] = {}
+    modules['security']['firewall']['fqdns'] = {}
     modules['security']['firewall']['ports'] = {}
     modules['security']['firewall']['addresses'] = {}
     modules['security']['firewall']['policy_lists'] = []

@@ -6,6 +6,7 @@ create10K_SimplePolicies.sh
 40K and 175K simple FG policies.zip
 175K_simple_policies_aug_23_2022.conf.zip
 .DS_Store
-a
-b
 ULA_CC.conf.zip
+fw508a-d.ashburn.va.ndcasbn-bigip_base.conf.zip
+ULA_CC_nat_first.conf.zip
+fw508a-d.ashburn.va.ndcasbn-bigip_base.fg.conf.zip
