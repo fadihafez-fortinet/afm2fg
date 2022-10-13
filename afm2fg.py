@@ -1313,8 +1313,8 @@ def init():
 if __name__ == "__main__":
 
     if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print ("USAGE: afm2fg.py <afmconfig.ucs> [<afmconfig.json>]")
-        print ("  Reads in an F5 UCS file and writes out a JSON formatted equivelant")
+        print ("USAGE: afm2fg.py <afmconfig.conf> [<afmconfig.json>]")
+        print ("  Reads in an F5 configuration file and writes out a JSON formatted equivelant")
         print ()
         exit(100)
 
