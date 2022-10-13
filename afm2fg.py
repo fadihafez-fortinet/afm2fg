@@ -783,6 +783,12 @@ def createFGAddresseObjects():
             for a in address_list['addresses']:
                 createFGAddress(address_list_name, removeCommonPrepend(a))
 
+    for address_list_name, address_list in modules['security']['firewall']['fqdns'].items():
+
+        if address_list['type'] == "fqdn":
+            for a in address_list['addresses']:
+                createFGAddress(address_list_name, removeCommonPrepend(a))
+
 
 # enddef createFGAddresseObjects
 
