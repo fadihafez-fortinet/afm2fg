@@ -849,7 +849,7 @@ def createFGServiceObjects():
 
 def printFGAddressObjects():
 
-    print("conf firewall address")
+    print("config firewall address")
 
     for name, a in addresses.items():
         if a.ipver == 4:
@@ -872,7 +872,7 @@ def printFGAddressObjects():
 
     print("end")
 
-    print("conf firewall address6")
+    print("config firewall address6")
 
     for name, a in addresses.items():
         if a.ipver == 6:
@@ -898,7 +898,7 @@ def printFGAddressObjects():
 
 def printFGServiceObjects():
 
-    print("conf firewall service custom")
+    print("config firewall service custom")
 
     for p in ports:
 
@@ -1062,7 +1062,7 @@ def createNATPools():
 
 def createVIPs():
 
-    print("conf firewall vip")
+    print("config firewall vip")
 
     for p in policies:
         if p.type == "nat":
