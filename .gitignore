@@ -12,3 +12,4 @@ ULA_CC_nat_first.conf.zip
 fw508a-d.ashburn.va.ndcasbn-bigip_base.fg.conf.zip
 newconfig
 sys_config
+run.sh
