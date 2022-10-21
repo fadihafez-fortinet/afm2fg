@@ -151,11 +151,22 @@ class Policy:
     service = "ALL"
     action = "deny"
 
-    def printDstSrcAddresses(self, dst_address_list, src_address_list):
+    def printDstSrcAddresses(self, dst_address_list, src_address_list, central_snat_enabled=False):
         ipv4_dst_addresses = []
         ipv6_dst_addresses = []
         ipv4_src_addresses = []
         ipv6_src_addresses = []
+
+        dstaddr = "dstaddr"
+        srcaddr = "srcaddr"
+        dstaddr6 = "dstaddr6"
+        srcaddr6 = "srcaddr6"
+
+        if central_snat_enabled:
+            dstaddr = "dst-addr"
+            srcaddr = "orig-addr"
+            dstaddr6 = "dst-addr6"
+            srcaddr6 = "orig-addr6"
 
         for a in dst_address_list:
             if "-" in a:
@@ -183,32 +194,36 @@ class Policy:
 
 
         if len(ipv4_dst_addresses):
-            print("        set dstaddr ", end="")
+            print("        set " + dstaddr + " ", end="")
             print(*ipv4_dst_addresses, sep=' ')
             print("")
         elif len(ipv4_src_addresses) > 0:
             print("        set dstaddr all")
+            print("        set status disable")
 
         if len(ipv6_dst_addresses):
-            print("        set dstaddr6 ", end="")
+            print("        set " + dstaddr6 + " ", end="")
             print(*ipv6_dst_addresses, sep=' ')
             print("")
         elif len(ipv6_src_addresses) > 0:
             print("        set dstaddr6 all")
+            print("        set status disable")
 
         if len(ipv4_src_addresses):
-            print("        set srcaddr ", end="")
+            print("        set " + srcaddr + " ", end="")
             print(*ipv4_src_addresses, sep=' ')
             print("")
         elif len(ipv4_dst_addresses) > 0:
             print("        set srcaddr all")
+            print("        set status disable")
 
         if len(ipv6_src_addresses):
-            print("        set srcaddr6 ", end="")
+            print("        set " + srcaddr6 + " ", end="")
             print(*ipv6_src_addresses, sep=' ')
             print("")
         elif len(ipv6_dst_addresses) > 0:
             print("        set srcaddr6 all")
+            print("        set status disable")
 
     def printDstPorts(self, dst_ports_list):
 
@@ -290,7 +305,7 @@ class Policy:
 
     def printFGFormattedNATPolicy(self):
 
-        print("config firewall policy")
+        print("config firewall central-snat-map")
 
         for r in self.rule_list:
             overall_rule_num = 1
@@ -308,28 +323,21 @@ class Policy:
             # else:
             #     print("        set name " + rule_name)
 
-            print("        set name policy" + str(r.rule_number))
-
             print("        set srcintf " + self.srcintf)
             print("        set dstintf " + self.dstintf)
             print("        set comments " + self.name + "_" + r.name)
 
-            self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"])
-            self.printAction(r.action)
+            self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"], True)
 
             if r.translations:
-                if r.translations["destination"]:
-                    print("        set dstaddr " + removeCommonPrepend(r.translations["destination"]))
+                # if r.translations["destination"]:
+                    # print("        set dst-addr " + removeCommonPrepend(r.translations["destination"]))
                 if r.translations["source"]:
                     print("        set nat enable")
-                    print("        set ippool enable")
-                    print("        set poolname " + removeCommonPrepend(r.translations["source"]))
+                    print("        set nat-ippool " + removeCommonPrepend(r.translations["source"]))
 
-            self.printDstPorts(r.destination["ports"])
-            # self.printService(r.protocol)
-            self.printLog(r.log)
+            # self.printDstPorts(r.destination["ports"])
 
-            print("        set schedule always")
             print("    next")
 
             overall_rule_num += 1
@@ -368,7 +376,7 @@ class Policy:
                         print("validation error, policy name: " + r.name + " source service not found: " + p.name)
                         errorcount += 1                        
 
-        print(str(errorcount) + " errors found in policy")
+        print("# " + str(errorcount) + " errors found in policy")
 
 
     def __init__(self, type, name, rules, rule_numbers) -> None:
@@ -1075,11 +1083,23 @@ def createVIPs():
             for r in p.rule_list:
                 if r.translations and r.translations["destination"]:
                     dst_tr_name = removeCommonPrepend(r.translations["destination"])
-                    print("    edit " + dst_tr_name)
-                    print("        set extip " + r.destination["addresses"][0])
-                    print("        set mappedip " + modules["security"]["nat"]["destination-translation"][dst_tr_name]["addresses"][0])
-                    print("        set extintf any")
-                    print("    next")
+
+                    # skip this vip if the DNAT extip and mappedip are not the same length
+                    extip = r.destination["addresses"][0]
+                    mappedip = modules["security"]["nat"]["destination-translation"][dst_tr_name]["addresses"][0] 
+                    if ("-" in extip and "-" in mappedip) or ("-" not in extip and "-" not in mappedip):
+                        print("    edit " + dst_tr_name)
+                        print("        set extip " + r.destination["addresses"][0])
+                        print("        set mappedip " + modules["security"]["nat"]["destination-translation"][dst_tr_name]["addresses"][0])
+                        print("        set extintf any")
+                        print("    next")
+                    else:
+                        print("# VIP TRANSLATION MISMATCH ")
+                        print("#    edit " + dst_tr_name)
+                        print("#        set extip " + r.destination["addresses"][0])
+                        print("#        set mappedip " + modules["security"]["nat"]["destination-translation"][dst_tr_name]["addresses"][0])
+                        print("#        set extintf any")
+                        print("#    next")
 
     print("end")
 
@@ -1267,11 +1287,10 @@ def createFGPolicy():
 def createFGPolicies():
     
     for p in policies:
-        if p.type == "fw":
-            p.printFGFormattedFWPolicy()
-        
         if p.type == "nat":
             p.printFGFormattedNATPolicy()
+        if p.type == "fw":
+            p.printFGFormattedFWPolicy()
 
 # enddef createFGPolicies
 
