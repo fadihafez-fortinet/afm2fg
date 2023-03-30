@@ -7,7 +7,16 @@
 # versions:
 #   1.0.0 (May 2, 2022): 
 #   - First version created
+#   1.1.0 (Mar 30, 2023):
+#   - Fixed some bugs
+#
 
+#
+# TODO:
+#  - 03/30/23: remove any IPv6_all and IPv4_all injections into the configuration
+#  - 03/30/23: only include the IPv4/v6 addresses from address-list if SRC/DST (other side) has equivalent IPv4/v6
+#  - 03/30/23: leave the IPv4/v6 addresses in as 'commented' if other side (SRC/DST) does not have equivalent
+#  - 03/30/23: fix the numbers of the policies used in the name - need to avoid overlap
 
 from asyncio.constants import DEBUG_STACK_DEPTH
 from errno import errorcode
@@ -376,6 +385,7 @@ class Policy:
                         print("validation error, policy name: " + r.name + " source service not found: " + p.name)
                         errorcount += 1                        
 
+        print("# policy name: " + name)
         print("# " + str(errorcount) + " errors found in policy")
 
 
