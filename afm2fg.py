@@ -385,7 +385,7 @@ class Policy:
                         print("validation error, policy name: " + r.name + " source service not found: " + p.name)
                         errorcount += 1                        
 
-        print("# policy name: " + name)
+        print("# policy name: " + self.name)
         print("# " + str(errorcount) + " errors found in policy")
 
 
