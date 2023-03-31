@@ -267,20 +267,22 @@ class Policy:
         if log == 1:
             print("        set logtraffic all")
 
-    def printFGFormattedFWPolicy(self):
+    def printFGFormattedFWPolicy(self, policy_num):
 
         rule_list_counter = 0
 
         print("config firewall policy")
 
+        # go through rule_lists
         for rl in self.rule_list:
             overall_rule_num = 1
             
             rule_pre_name = shortenRuleName(self.name)
 
+            # go through all rules in current rule_list
             for r in rl:
                 rule_name = shortenRuleName(r.rule_list_name + "/" + r.name)
-                rule_number = 100000 * int(self.rule_numbers[rule_list_counter]) + 1000 * overall_rule_num + 10 * int(r.rule_number)
+                rule_number = str(policy_num) + "_" + self.rule_numbers[rule_list_counter] + "_" + str(overall_rule_num) + "_" + str(r.rule_number)
                 print("# " + self.name + "/" + r.name)
                 # print("    edit " + self.rule_numbers[rule_list_counter] + str(overall_rule_num) + r.rule_number)
                 # print("    edit " + str(rule_number))
@@ -291,7 +293,8 @@ class Policy:
                 # else:
                 #     print("        set name " + rule_name)
 
-                print("        set name policy" + str(r.rule_number))
+                # print("        set name policy" + str(r.rule_number))
+                print("        set name policy" + str(policy_num) + "_" + str(rule_number))
 
                 print("        set srcintf " + self.srcintf)
                 print("        set dstintf " + self.dstintf)
@@ -1295,12 +1298,14 @@ def createFGPolicy():
 
 
 def createFGPolicies():
-    
+
+    policy_num = 1 
     for p in policies:
         if p.type == "nat":
             p.printFGFormattedNATPolicy()
         if p.type == "fw":
-            p.printFGFormattedFWPolicy()
+            p.printFGFormattedFWPolicy(policy_num)
+        policy_num += 1
 
 # enddef createFGPolicies
 
