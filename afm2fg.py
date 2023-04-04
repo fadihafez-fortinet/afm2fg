@@ -13,10 +13,12 @@
 
 #
 # TODO:
-#  - 03/30/23: remove any IPv6_all and IPv4_all injections into the configuration
-#  - 03/30/23: only include the IPv4/v6 addresses from address-list if SRC/DST (other side) has equivalent IPv4/v6
+#  -
+# CHANGES:
+#  - 03/31/23: fix the numbers of the policies used in the name - need to avoid overlap
+#  - 03/31/23: remove any IPv6_all and IPv4_all injections into the configuration
+#  - 03/31/23: only include the IPv4/v6 addresses from address-list if SRC/DST (other side) has equivalent IPv4/v6
 #  - 03/30/23: leave the IPv4/v6 addresses in as 'commented' if other side (SRC/DST) does not have equivalent
-#  - 03/30/23: fix the numbers of the policies used in the name - need to avoid overlap
 
 from asyncio.constants import DEBUG_STACK_DEPTH
 from errno import errorcode
@@ -201,38 +203,84 @@ class Policy:
                 else:
                     ipv4_src_addresses.append(a)
 
-
-        if len(ipv4_dst_addresses):
+        # SRC and DST IPv4 addresses
+        if len(ipv4_dst_addresses) and len(ipv4_src_addresses):
             print("        set " + dstaddr + " ", end="")
             print(*ipv4_dst_addresses, sep=' ')
             print("")
-        elif len(ipv4_src_addresses) > 0:
-            print("        set dstaddr all")
-            print("        set status disable")
-
-        if len(ipv6_dst_addresses):
-            print("        set " + dstaddr6 + " ", end="")
-            print(*ipv6_dst_addresses, sep=' ')
-            print("")
-        elif len(ipv6_src_addresses) > 0:
-            print("        set dstaddr6 all")
-            print("        set status disable")
-
-        if len(ipv4_src_addresses):
             print("        set " + srcaddr + " ", end="")
             print(*ipv4_src_addresses, sep=' ')
             print("")
-        elif len(ipv4_dst_addresses) > 0:
-            print("        set srcaddr all")
-            print("        set status disable")
+        elif len(ipv4_dst_addresses) == 0 and len(ipv4_src_addresses) == 0:
+            pass
+        else:
+            if len(ipv4_src_addresses) == 0:
+                print("        # set " + dstaddr + " ", end="")
+                print(*ipv4_dst_addresses, sep=' ')
+                print("")
+            elif len(ipv4_dst_addresses) == 0:
+                print("        # set " + srcaddr + " ", end="")
+                print(*ipv4_src_addresses, sep=' ')
+                print("")
 
-        if len(ipv6_src_addresses):
+        if len(ipv6_dst_addresses) and len(ipv6_src_addresses):
+            print("        set " + dstaddr6 + " ", end="")
+            print(*ipv6_dst_addresses, sep=' ')
+            print("")
             print("        set " + srcaddr6 + " ", end="")
             print(*ipv6_src_addresses, sep=' ')
             print("")
-        elif len(ipv6_dst_addresses) > 0:
-            print("        set srcaddr6 all")
-            print("        set status disable")
+        elif len(ipv6_dst_addresses) == 0 and len(ipv6_src_addresses) == 0:
+            pass
+        else:
+            if len(ipv6_src_addresses) == 0:
+                print("        # set " + dstaddr6 + " ", end="")
+                print(*ipv6_dst_addresses, sep=' ')
+                print("")
+            elif len(ipv6_dst_addresses) == 0:
+                print("        # set " + srcaddr6 + " ", end="")
+                print(*ipv6_src_addresses, sep=' ')
+                print("")
+
+        # # if there are DST IPv4 addresses
+        # if len(ipv4_dst_addresses):
+        #     print("        set " + dstaddr + " ", end="")
+        #     print(*ipv4_dst_addresses, sep=' ')
+        #     print("")
+        # elif len(ipv4_src_addresses) > 0:
+        # # SRC IPv4 addresses but no DST IPv4 addresses
+        #     print("        set dstaddr all")
+        #     print("        set status disable")
+
+        # # if there are DST IPv6 addresses
+        # if len(ipv6_dst_addresses):
+        #     print("        set " + dstaddr6 + " ", end="")
+        #     print(*ipv6_dst_addresses, sep=' ')
+        #     print("")
+        # elif len(ipv6_src_addresses) > 0:
+        # # SRC IPv6 addresses but no DST IPv6 addresses
+        #     print("        set dstaddr6 all")
+        #     print("        set status disable")
+
+        # # if there are SRC IPv4 addresses
+        # if len(ipv4_src_addresses):
+        #     print("        set " + srcaddr + " ", end="")
+        #     print(*ipv4_src_addresses, sep=' ')
+        #     print("")
+        # elif len(ipv4_dst_addresses) > 0:
+        # # DST IPv4 addresses but no SRC IPv4 addresses
+        #     print("        set srcaddr all")
+        #     print("        set status disable")
+
+        # # if there are SRC IPv6 addresses
+        # if len(ipv6_src_addresses):
+        #     print("        set " + srcaddr6 + " ", end="")
+        #     print(*ipv6_src_addresses, sep=' ')
+        #     print("")
+        # elif len(ipv6_dst_addresses) > 0:
+        # # DST IPv6 addresses but no SRC IPv6 addresses
+        #     print("        set srcaddr6 all")
+        #     print("        set status disable")
 
     def printDstPorts(self, dst_ports_list):
 
@@ -458,7 +506,6 @@ def readValues(arr):
 # enddef readValues
 
 # take an array of configuration and return a dictionary
-
 def dictify(arr):
 
     obj = {}
@@ -607,6 +654,9 @@ def processNet(section):
 
 # enddef processNet
 
+# Scans the modules['security']['nat']['destination-translation'] and modules['security']['nat']['source-translation'] arrays looking for duplicate addresses
+# If found, it marks the 2nd, 3rd, etc. address object as a duplicate of the first
+# This helps to reduce the number of NAT pools that need to be created later, saving resources
 def markNATDups():
 
     dt_names = []
@@ -775,6 +825,7 @@ def createFGAddressGroups():
 
 # enddef createFGAddressGroups
 
+# create a FortiOS type address object and append it to the global addresses array
 def createFGAddresseObjects():
 
     for address_list_name, address_list in modules['net']['address_lists'].items():
@@ -813,6 +864,7 @@ def createFGAddresseObjects():
 
 # enddef createFGAddresseObjects
 
+# Since F5 service names can be very lengthy, they have to be shortened.  The actual name will end up in the FortiOS policy comment instead
 def shortenServiceName(name):
     comment = name
     shortname = ''
@@ -1347,8 +1399,9 @@ def init():
 if __name__ == "__main__":
 
     if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print ("USAGE: afm2fg.py <afmconfig.conf> [<afmconfig.json>]")
-        print ("  Reads in an F5 configuration file and writes out a JSON formatted equivelant")
+        print("USAGE: afm2fg.py <afmconfig.conf> [<afmconfig.json>]")
+        print("  Reads in an F5 configuration file and writes to STDOUT the equivalent FortiOS configuration.")
+        print("  If a second parameter (optional JSON filename) is provided, it writes out a JSON formatted F5 configuration into that file")
         print ()
         exit(100)
 
