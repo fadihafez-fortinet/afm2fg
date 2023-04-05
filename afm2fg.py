@@ -41,6 +41,7 @@ modules = {}
 attempt_num = 0
 MAX_RULE_NAME_LEN = 35
 MAX_SERVICE_NAME_LEN = 78
+COMMENT_OUT_POLICIES_WITH_MISSING_SRC_OR_DST_ADDRESSES = True
 
 protocol_numbers = {
     'ospf': 84,
@@ -162,7 +163,7 @@ class Policy:
     service = "ALL"
     action = "deny"
 
-    def printDstSrcAddresses(self, dst_address_list, src_address_list, central_snat_enabled=False):
+    def printDstSrcAddresses(self, dst_address_list, src_address_list, central_snat_enabled=False, commented_out=False):
         ipv4_dst_addresses = []
         ipv6_dst_addresses = []
         ipv4_src_addresses = []
@@ -205,13 +206,16 @@ class Policy:
 
         # SRC and DST IPv4 addresses
         if len(ipv4_dst_addresses) and len(ipv4_src_addresses):
+            if commented_out: print("# ", end="")
             print("        set " + dstaddr + " ", end="")
             print(*ipv4_dst_addresses, sep=' ')
             print("")
+            if commented_out: print("# ", end="")
             print("        set " + srcaddr + " ", end="")
             print(*ipv4_src_addresses, sep=' ')
             print("")
         elif len(ipv4_dst_addresses) == 0 and len(ipv4_src_addresses) == 0:
+            # contains neither SRC or DST addresses
             pass
         else:
             if len(ipv4_src_addresses) == 0:
@@ -224,13 +228,16 @@ class Policy:
                 print("")
 
         if len(ipv6_dst_addresses) and len(ipv6_src_addresses):
+            if commented_out: print("# ", end="")
             print("        set " + dstaddr6 + " ", end="")
             print(*ipv6_dst_addresses, sep=' ')
             print("")
+            if commented_out: print("# ", end="")
             print("        set " + srcaddr6 + " ", end="")
             print(*ipv6_src_addresses, sep=' ')
             print("")
         elif len(ipv6_dst_addresses) == 0 and len(ipv6_src_addresses) == 0:
+            # contains neither SRC or DST addresses
             pass
         else:
             if len(ipv6_src_addresses) == 0:
@@ -242,77 +249,47 @@ class Policy:
                 print(*ipv6_src_addresses, sep=' ')
                 print("")
 
-        # # if there are DST IPv4 addresses
-        # if len(ipv4_dst_addresses):
-        #     print("        set " + dstaddr + " ", end="")
-        #     print(*ipv4_dst_addresses, sep=' ')
-        #     print("")
-        # elif len(ipv4_src_addresses) > 0:
-        # # SRC IPv4 addresses but no DST IPv4 addresses
-        #     print("        set dstaddr all")
-        #     print("        set status disable")
 
-        # # if there are DST IPv6 addresses
-        # if len(ipv6_dst_addresses):
-        #     print("        set " + dstaddr6 + " ", end="")
-        #     print(*ipv6_dst_addresses, sep=' ')
-        #     print("")
-        # elif len(ipv6_src_addresses) > 0:
-        # # SRC IPv6 addresses but no DST IPv6 addresses
-        #     print("        set dstaddr6 all")
-        #     print("        set status disable")
-
-        # # if there are SRC IPv4 addresses
-        # if len(ipv4_src_addresses):
-        #     print("        set " + srcaddr + " ", end="")
-        #     print(*ipv4_src_addresses, sep=' ')
-        #     print("")
-        # elif len(ipv4_dst_addresses) > 0:
-        # # DST IPv4 addresses but no SRC IPv4 addresses
-        #     print("        set srcaddr all")
-        #     print("        set status disable")
-
-        # # if there are SRC IPv6 addresses
-        # if len(ipv6_src_addresses):
-        #     print("        set " + srcaddr6 + " ", end="")
-        #     print(*ipv6_src_addresses, sep=' ')
-        #     print("")
-        # elif len(ipv6_dst_addresses) > 0:
-        # # DST IPv6 addresses but no SRC IPv6 addresses
-        #     print("        set srcaddr6 all")
-        #     print("        set status disable")
-
-    def printDstPorts(self, dst_ports_list):
+    def printDstPorts(self, dst_ports_list, commented_out=False):
 
         if len(dst_ports_list) == 0:
+            if commented_out: print("# ", end="")
             print("        set service ALL")
             return
 
+        if commented_out: print("# ", end="")
         print("        set service ", end="")
 
         for s in dst_ports_list:
             if len(s.name) > MAX_SERVICE_NAME_LEN:
                 shortname, s.comment = shortenServiceName(s.name)
+                if commented_out: print("# ", end="")
                 print(shortname + " ", end="")
             else:
+                if commented_out: print("# ", end="")
                 print(s.name + " ", end="")
 
         print("")
 
-    def printService(self, protocol):
+    def printService(self, protocol, commented_out=False):
         if protocol == "tcp":
+            if commented_out: print("# ", end="")
             print("        set service ALL_TCP")
         elif protocol == "udp":
+            if commented_out: print("# ", end="")
             print("        set service ALL_UDP")
         elif protocol == "icmp":
+            if commented_out: print("# ", end="")
             print("        set service ALL_ICMP")
 
-    def printAction(self, action):
+    def printAction(self, action, commented_out=False):
         if action == "accept-decisively" or action == "accept":
+            if commented_out: print("# ", end="")
             print("        set action accept")
 
-    def printLog(self, log):
+    def printLog(self, log, commented_out=False):
         if log == 1:
+            if commented_out: print("# ", end="")
             print("        set logtraffic all")
 
     def printFGFormattedFWPolicy(self, policy_num):
@@ -332,30 +309,40 @@ class Policy:
                 rule_name = shortenRuleName(r.rule_list_name + "/" + r.name)
                 rule_number = str(policy_num) + "_" + self.rule_numbers[rule_list_counter] + "_" + str(overall_rule_num) + "_" + str(r.rule_number)
                 print("# " + self.name + "/" + r.name)
-                # print("    edit " + self.rule_numbers[rule_list_counter] + str(overall_rule_num) + r.rule_number)
-                # print("    edit " + str(rule_number))
-                print("    edit 0")
 
-                # if attempt_num:
-                #     print("        set name " + rule_name + "att_" + str(attempt_num))
-                # else:
-                #     print("        set name " + rule_name)
+                if COMMENT_OUT_POLICIES_WITH_MISSING_SRC_OR_DST_ADDRESSES and (len(r.destination["addresses"]) == 0 or len(r.source["addresses"]) == 0):
+                    print("#    edit 0")
 
-                # print("        set name policy" + str(r.rule_number))
-                print("        set name policy" + str(policy_num) + "_" + str(rule_number))
+                    print("#        set name policy" + str(policy_num) + "_" + str(rule_number))
+                    print("#        set srcintf " + self.srcintf)
+                    print("#        set dstintf " + self.dstintf)
+                    print("#        set comments " + self.name + "/" + r.rule_list_name + "/" + r.name)
 
-                print("        set srcintf " + self.srcintf)
-                print("        set dstintf " + self.dstintf)
-                print("        set comments " + self.name + "/" + r.rule_list_name + "/" + r.name)
+                    self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"], commented_out=True)
+                    self.printDstPorts(r.destination["ports"], commented_out=True)
+                    # self.printService(r.protocol, commented_out=True)
+                    self.printAction(r.action, commented_out=True)
+                    self.printLog(r.log, commented_out=True)
 
-                self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"])
-                self.printDstPorts(r.destination["ports"])
-                # self.printService(r.protocol)
-                self.printAction(r.action)
-                self.printLog(r.log)
+                    print("#        set schedule always")
+                    print("#    next")
 
-                print("        set schedule always")
-                print("    next")
+                else:
+                    print("    edit 0")
+
+                    print("        set name policy" + str(policy_num) + "_" + str(rule_number))
+                    print("        set srcintf " + self.srcintf)
+                    print("        set dstintf " + self.dstintf)
+                    print("        set comments " + self.name + "/" + r.rule_list_name + "/" + r.name)
+
+                    self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"])
+                    self.printDstPorts(r.destination["ports"])
+                    # self.printService(r.protocol)
+                    self.printAction(r.action)
+                    self.printLog(r.log)
+
+                    print("        set schedule always")
+                    print("    next")
 
                 overall_rule_num += 1
             print("")
@@ -372,16 +359,10 @@ class Policy:
             
             rule_pre_name = shortenRuleName(self.name)
 
-            # rule_name = shortenRuleName(r.name)
             rule_name = shortenRuleName(rule_pre_name + "/" + r.name)
 
             print("# " + self.name + "/" + r.name)
             print("    edit 0")
-
-            # if attempt_num:
-            #     print("        set name " + rule_name + "att_" + str(attempt_num))
-            # else:
-            #     print("        set name " + rule_name)
 
             print("        set srcintf " + self.srcintf)
             print("        set dstintf " + self.dstintf)
@@ -390,13 +371,9 @@ class Policy:
             self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"], True)
 
             if r.translations:
-                # if r.translations["destination"]:
-                    # print("        set dst-addr " + removeCommonPrepend(r.translations["destination"]))
                 if r.translations["source"]:
                     print("        set nat enable")
                     print("        set nat-ippool " + removeCommonPrepend(r.translations["source"]))
-
-            # self.printDstPorts(r.destination["ports"])
 
             print("    next")
 
