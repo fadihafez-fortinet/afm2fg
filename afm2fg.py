@@ -1315,7 +1315,7 @@ def createFGPolicy():
                 rule_num_incrementer += 1
                 rule_nums_for_this_policy.append(str(rule_num_incrementer))
 
-            if "rule-list" in rule_list:
+            if "rule-list" in rule_list and removeCommonPrepend(rule_list['rule-list']) in rules_list:
                 rules_for_this_policy.append(rules_list[removeCommonPrepend(rule_list['rule-list'])])
             else:
                 # TODO: create a new rule with the values provided in this rule
