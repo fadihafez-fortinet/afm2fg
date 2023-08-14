@@ -9,6 +9,8 @@
 #   - First version created
 #   1.1.0 (Mar 30, 2023):
 #   - Fixed some bugs
+#   1.2.0 (Aug 13, 2023):
+#   - New brach for VZ
 #
 
 #
@@ -20,6 +22,7 @@
 #  - 03/31/23: only include the IPv4/v6 addresses from address-list if SRC/DST (other side) has equivalent IPv4/v6
 #  - 03/30/23: leave the IPv4/v6 addresses in as 'commented' if other side (SRC/DST) does not have equivalent
 #  - 04/05/23: Added COMMENT_OUT_POLICIES_WITH_MISSING_SRC_OR_DST_ADDRESSES to allow commenting out of policies that are missing SRC or DST addresses
+#  - 08/13/23: New branch for VZ
 
 from asyncio.constants import DEBUG_STACK_DEPTH
 from errno import errorcode
