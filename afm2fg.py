@@ -10,7 +10,7 @@
 #   1.1.0 (Mar 30, 2023):
 #   - Fixed some bugs
 #   1.2.0 (Aug 13, 2023):
-#   - New brach for VZ
+#   - New branch for another customer
 #
 
 #
@@ -32,6 +32,7 @@ from lib2to3.pygram import python_grammar_no_print_statement
 from multiprocessing.sharedctypes import Value
 from ssl import PROTOCOL_TLS_SERVER
 from pydoc import describe
+from tkinter import W
 from tkinter.messagebox import NO
 from unicodedata import name
 from unittest import skip
@@ -45,7 +46,7 @@ modules = {}
 attempt_num = 0
 MAX_RULE_NAME_LEN = 35
 MAX_SERVICE_NAME_LEN = 78
-COMMENT_OUT_POLICIES_WITH_MISSING_SRC_OR_DST_ADDRESSES = True
+COMMENT_OUT_POLICIES_WITH_MISSING_SRC_OR_DST_ADDRESSES = False
 
 protocol_numbers = {
     'ospf': 84,
@@ -167,7 +168,21 @@ class Policy:
     service = "ALL"
     action = "deny"
 
-    def printDstSrcAddresses(self, dst_address_list, src_address_list, central_snat_enabled=False, commented_out=False):
+    def isAddressListIPv4(self, address_list):
+
+        address_obj = modules['security']['firewall']['addresses'][address_list[0]]['addresses'] 
+        if type(address_obj) == list:
+            first_address = modules['security']['firewall']['addresses'][address_list[0]]['addresses'][0]
+        else:
+            first_address = list(modules['security']['firewall']['addresses'][address_list[0]]['addresses'].keys())[0]
+
+        if '-' in first_address:
+            first_address = first_address.split('-')[0]
+            
+        ipver = ipaddress.ip_network(first_address).version
+        return True if ipver == 4 else False
+
+    def printDstSrcAddresses(self, dst_addresses, src_addresses, dst_address_lists=[], src_address_lists=[], central_snat_enabled=False, commented_out=False):
         ipv4_dst_addresses = []
         ipv6_dst_addresses = []
         ipv4_src_addresses = []
@@ -184,7 +199,7 @@ class Policy:
             dstaddr6 = "dst-addr6"
             srcaddr6 = "orig-addr6"
 
-        for a in dst_address_list:
+        for a in dst_addresses:
             if "-" in a:
                 if ":" in a:
                     ipv6_dst_addresses.append(a + "_range")
@@ -196,7 +211,24 @@ class Policy:
                 else:
                     ipv4_dst_addresses.append(a)
 
-        for a in src_address_list:
+        # if address lists were included then print those
+        if len(dst_address_lists) > 0:
+            if self.isAddressListIPv4(dst_address_lists):
+                print("        set dstaddr ", end="")
+            else:
+                print("        set dstaddr6 ", end="")
+
+            print(*dst_address_lists, sep=' ')
+
+        if len(src_address_lists) > 0:
+            if self.isAddressListIPv4(src_address_lists):
+                print("        set srcaddr ", end="")
+            else:
+                print("        set srcaddr6 ", end="")
+
+            print(*src_address_lists, sep=' ')
+
+        for a in src_addresses:
             if "-" in a:            
                 if ":" in a:
                     ipv6_src_addresses.append(a + "_range")
@@ -339,7 +371,8 @@ class Policy:
                     print("        set dstintf " + self.dstintf)
                     print("        set comments " + self.name + "/" + r.rule_list_name + "/" + r.name)
 
-                    self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"])
+                    self.printDstSrcAddresses(r.destination["addresses"], r.source["addresses"], r.destination["address-lists"], r.source["address-lists"])
+
                     self.printDstPorts(r.destination["ports"])
                     # self.printService(r.protocol)
                     self.printAction(r.action)
@@ -904,7 +937,6 @@ def createFGServiceObjects():
 
         ports[name] = Port(name, port_numbers, comment, [])
 
-
 # enddef createFGServiceObjects
 
 def printFGAddressObjects():
@@ -955,6 +987,47 @@ def printFGAddressObjects():
     print("end")
 
 # enddef printFGAddressObjects
+
+def printFGAddressGroups():
+
+    print("config firewall addgrp")
+
+    for al_name, al_obj in modules["security"]["firewall"]["addresses"].items():
+        if isinstance(al_obj["addresses"], list) and len(al_obj["addresses"]) > 0 and "." in al_obj["addresses"][0]:
+            print("    edit " + al_name)
+            print("        set member ", end="")
+            for a in al_obj["addresses"]:
+                print(a + " ", end="")
+            print("")
+        elif isinstance(al_obj["addresses"], dict) and len(al_obj["addresses"]) > 0 and "." in list(al_obj["addresses"].keys())[0]:
+            print("    edit " + al_name)
+            print("        set member ", end="")
+            for a in al_obj["addresses"]:
+                print(a + " ", end="")
+            print("")
+
+    print("end")
+
+    print("config firewall addgrp6")
+
+    for al_name, al_obj in modules["security"]["firewall"]["addresses"].items():
+        if isinstance(al_obj["addresses"], list) and len(al_obj["addresses"]) > 0 and ":" in al_obj["addresses"][0]:
+            print("    edit " + al_name)
+            print("        set member ", end="")
+            for a in al_obj["addresses"]:
+                print(a + " ", end="")
+            print("")
+        elif isinstance(al_obj["addresses"], dict) and len(al_obj["addresses"]) > 0 and ":" in list(al_obj["addresses"].keys())[0]:
+            print("    edit " + al_name)
+            print("        set member ", end="")
+            for a in al_obj["addresses"]:
+                print(a + " ", end="")
+            print("")
+
+    print("end")
+
+# enddif printAddressLists 
+
 
 def printFGServiceObjects():
 
@@ -1156,6 +1229,7 @@ def updateGlobalRulesList(r, rule, rule_list_name):
     global global_rule_number
 
     curr_rule_dests = {
+        'address-lists': [],
         'addresses': [],
         'ports': [],
         'raw-ports': []
@@ -1169,9 +1243,11 @@ def updateGlobalRulesList(r, rule, rule_list_name):
         destination = rule['destination']
         
         if "address-lists" in destination:
-            for dst_address_list_name in destination['address-lists']:
-                al = extractAddressesFromAddressList(removeCommonPrepend(dst_address_list_name))
-                curr_rule_dests["addresses"].extend(al)
+            curr_rule_dests["address-lists"] = destination["address-lists"]
+
+            # for dst_address_list_name in destination['address-lists']:
+            #     al = extractAddressesFromAddressList(removeCommonPrepend(dst_address_list_name))
+            #     curr_rule_dests["addresses"].extend(al)
 
         if "addresses" in destination:
             curr_rule_dests["addresses"].extend(destination["addresses"])
@@ -1201,6 +1277,7 @@ def updateGlobalRulesList(r, rule, rule_list_name):
             curr_rule_dests["raw-ports"].extend(destination["ports"])
 
     curr_rule_srcs = {
+        'address-lists': [],
         'addresses': [],
         'ports': [],
         'raw-ports': []
@@ -1210,9 +1287,11 @@ def updateGlobalRulesList(r, rule, rule_list_name):
         source = rule['source']
 
         if "address-lists" in source:
-            for src_address_list_name in source['address-lists']:
-                al = extractAddressesFromAddressList(removeCommonPrepend(src_address_list_name))
-                curr_rule_srcs["addresses"].extend(al)
+            curr_rule_srcs["address-lists"] = source["address-lists"]
+
+            # for src_address_list_name in source['address-lists']:
+            #     al = extractAddressesFromAddressList(removeCommonPrepend(src_address_list_name))
+            #     curr_rule_srcs["addresses"].extend(al)
 
         if "addresses" in source:
             curr_rule_srcs["addresses"].extend(source["addresses"])
@@ -1406,11 +1485,13 @@ if __name__ == "__main__":
         createFGPolicy()
 
         printFGAddressObjects()
+        printFGAddressGroups()
         printFGServiceObjects()
 
         createNATPools()
         createVIPs()
         createFGPolicies()
+
 
         # validate that all referenced Addresses or Services in the Policies actually exist and the FortiGate configuration will not return errors when pasted into a FortiGate
         validateAllPolicies()
